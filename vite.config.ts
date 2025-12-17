@@ -3,11 +3,9 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { VitePWA } from 'vite-plugin-pwa';
-import mkcert from 'vite-plugin-mkcert'
 
 export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths(),
-    mkcert(),
     VitePWA({
       devOptions: {
         enabled: true, // Permite testar o PWA no modo 'npm run dev'
@@ -65,16 +63,28 @@ export default defineConfig({
           {
             // 3. Captura qualquer navegação de página (ex: /dashboard, /perfil)
             urlPattern: ({ request }) => request.mode === 'navigate',
-            handler: 'NetworkFirst', // Tenta sempre o servidor antes, para ter o HTML atualizado
+            handler: 'NetworkOnly', // Tenta sempre o servidor antes, para ter o HTML atualizado
             options: {
+              backgroundSync: {
+                name: 'htmlCacheQueue',
+                options: {
+                  maxRetentionTime: 24 * 60
+                }
+              },
               cacheName: 'html-cache',
-              networkTimeoutSeconds: 3, // Se o servidor demorar, ele desiste e tenta cache
+              //networkTimeoutSeconds: 3, // Se o servidor demorar, ele desiste e tenta cache
             },
           },
           {
             urlPattern: ({ url }) => url.pathname.endsWith('.data'),
-            handler: 'NetworkFirst',
+            handler: 'NetworkOnly',
             options: {
+              backgroundSync: {
+                name: 'routerCacheQueue',
+                options: {
+                  maxRetentionTime: 24 * 60
+                }
+              },
               cacheName: 'router-data-cache',
             },
           },
@@ -82,4 +92,7 @@ export default defineConfig({
       }
     })
   ],
+  server: {
+    host: true
+  }
 });

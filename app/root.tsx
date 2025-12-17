@@ -10,6 +10,7 @@ import {
 import type { Route } from "./+types/root";
 import "./app.css";
 import {useEffect, useState} from "react";
+/*
 export function InstallButton() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isReady, setIsReady] = useState(false);
@@ -57,6 +58,7 @@ export function InstallButton() {
       </button>
   );
 }
+*/
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
@@ -83,9 +85,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <Links/>
     </head>
     <body>
-    <div className="fixed top-4 right-4 z-50">
+    {/*<div className="fixed top-4 right-4 z-50">
       <InstallButton />
-    </div>
+    </div>*/}
     {children}
     <ScrollRestoration/>
     <Scripts/>
