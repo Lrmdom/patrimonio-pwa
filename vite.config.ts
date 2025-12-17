@@ -9,7 +9,6 @@ export default defineConfig({
   plugins: [tailwindcss(), reactRouter(), tsconfigPaths(),
     mkcert(),
     VitePWA({
-      base: '/',
       devOptions: {
         enabled: true, // Permite testar o PWA no modo 'npm run dev'
         type: 'module',
@@ -18,8 +17,8 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg','pwa-512-512.png','pwa-192-192.png'],
       manifest: {
         name: 'Catalogo Patrimonio',
-        short_name: 'RR-App',
-        description: 'Aplicação construída com React Router Framework Mode',
+        short_name: 'C-Patrimonio',
+        description: 'Aplicação Catalog patrimonio',
         theme_color: '#000000', // Cor da barra de status no mobile
         background_color: '#ffffff', // Cor de fundo do splash screen
         display: 'standalone', // Faz o app abrir sem a barra do navegador
@@ -31,13 +30,29 @@ export default defineConfig({
             src: 'pwa-192-192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
           },
           {
             src: 'pwa-512-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'maskable'
+          }
+        ],
+        screenshots: [
+          {
+            src: 'screenshot-desktop.png', // Deve estar na pasta /public
+            sizes: '1280x720',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'Vista de Desktop do Catálogo'
+          },
+          {
+            src: 'screenshot-mobile.png', // Deve estar na pasta /public
+            sizes: '390x844',
+            type: 'image/png',
+            form_factor: 'narrow',
+            label: 'Vista de Telemóvel do Catálogo'
           }
         ]
       },
@@ -45,7 +60,7 @@ export default defineConfig({
         sourcemap: true, // Isso ajuda MUITO no debug sem quebrar o tipo
         cleanupOutdatedCaches: true, // Recomendado para evitar conflitos de versão
         navigateFallback: null,
-        globPatterns: ['**/*.{js,css,png,svg,ico,json,woff,woff2}'],
+        globPatterns: ['**/*.{js,css,html,png,svg,ico,json,woff,woff2}'],
         runtimeCaching: [
           {
             // 3. Captura qualquer navegação de página (ex: /dashboard, /perfil)
