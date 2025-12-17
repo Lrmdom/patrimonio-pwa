@@ -20,3 +20,5 @@ COPY --from=production-dependencies-env /app/node_modules /app/node_modules
 COPY --from=build-env /app/build /app/build
 WORKDIR /app
 CMD ["npm", "run", "start"]
+
+# docker buildx build  --platform linux/amd64  -t execlog/patrimonio:v.0.2 .  && docker push execlog/patrimonio:v.0.2
