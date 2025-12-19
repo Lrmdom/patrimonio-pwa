@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ESNext", "WebWorker"], // AQUI está o segredo: WebWorker em vez de DOM
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["vite-plugin-pwa/client"],
+    "strict": true,
+    "isolatedModules": true,
+    "noEmit": true
+  },
+  "include": ["src/sw.js"]
+}

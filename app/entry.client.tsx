@@ -1,6 +1,8 @@
 import { startTransition, StrictMode } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
+// @ts-ignore
+import { registerSW } from 'virtual:pwa-register';
 
 startTransition(() => {
   hydrateRoot(
@@ -11,12 +13,15 @@ startTransition(() => {
   );
 });
 
-// Registro do Service Worker para PWA
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
-    window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch((error) => {
-            console.error("Erro ao registrar SW:", error);
-        });
+// Isto regista automaticamente o sw.js que o Vite gera a partir do teu src/sw.js
+if (import.meta.env.PROD) {
+    registerSW({
+        onNeedRefresh() {
+            console.log('Nova versão disponível!');
+        },
+        onOfflineReady() {
+            console.log('App pronta para trabalhar offline.');
+        },
     });
 }
 
