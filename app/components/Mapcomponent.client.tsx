@@ -1,11 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Link } from 'react-router-dom';
 
 // --- Interfaces ---
-
 export interface LimiteAdministrativo {
     id: number;
     nome_freguesia: string;
@@ -31,210 +30,160 @@ interface MapProps {
     zoom: number;
 }
 
-// --- Componente Auxiliar: Auto-Centralização ---
-// Faz o mapa deslizar suavemente para a posição do utilizador quando esta muda
+// --- UTIL: Cálculo de Distância (Haversine) ---
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371e3;
+    const φ1 = lat1 * Math.PI / 180;
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
 function RecenterAutomatically({ coords }: { coords: L.LatLngExpression }) {
     const map = useMap();
     useEffect(() => {
-        if (coords) {
-            map.setView(coords, map.getZoom(), { animate: true });
-        }
+        if (coords) map.setView(coords, map.getZoom(), { animate: true });
     }, [coords, map]);
     return null;
 }
 
-// --- Configuração de Ícones ---
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+const createCustomIcon = (color: string) => L.divIcon({
+    className: 'custom-marker',
+    html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -7],
 });
 
-const createCustomIcon = (color: string) => {
-    return L.divIcon({
-        className: `custom-marker`,
-        html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
-        popupAnchor: [0, -7],
-    });
-};
-
-// Ícone Animado para o Utilizador (Pulso Azul)
 const userLocationIcon = L.divIcon({
     className: 'user-location-marker',
-    html: `<div class="pulse-container">
-             <div class="pulse-dot"></div>
+    html: `<div style="position: relative; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center;">
              <div class="pulse-ring"></div>
+             <div class="pulse-dot"></div>
            </div>`,
     iconSize: [20, 20],
     iconAnchor: [10, 10]
 });
 
-// --- Helpers ---
-const getDescriptionText = (blocks: any[]) => {
-    if (!blocks || !Array.isArray(blocks)) return "";
-    return blocks.map(b => b.children?.map((c: any) => c.text).join("")).join(" ");
-};
-
 // --- COMPONENTE PRINCIPAL ---
 export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, center, zoom }) => {
-    // Estados de Filtros
-    const [filterTipo, setFilterTipo] = useState<string>('all');
-    const [filterClass, setFilterClass] = useState<string>('all');
+    const [userPos, setUserPos] = useState<[number, number] | null>(null);
+    const [isTracking, setIsTracking] = useState(true);
+    const [activePopupId, setActivePopupId] = useState<string | null>(null);
 
-    // Estados de Geolocalização
-    const [userPos, setUserPos] = useState<L.LatLngExpression | null>(null);
-    const [isTracking, setIsTracking] = useState(true); // Permite ao utilizador desligar o "auto-follow"
+    // Referência para aceder aos métodos dos marcadores (open/close popup)
+    const markersRef = useRef<{ [key: string]: L.Marker }>({});
 
-    // 1. Efeito de Monitorização de GPS (watchPosition)
+    // 1. Monitorizar GPS
     useEffect(() => {
         if (typeof window !== "undefined" && "geolocation" in navigator) {
             const watchId = navigator.geolocation.watchPosition(
-                (pos) => {
-                    const { latitude, longitude } = pos.coords;
-                    setUserPos([latitude, longitude]);
-                },
-                (err) => console.warn("Erro de geolocalização:", err),
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                (pos) => setUserPos([pos.coords.latitude, pos.coords.longitude]),
+                (err) => console.warn(err),
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
             return () => navigator.geolocation.clearWatch(watchId);
         }
     }, []);
 
-    // 2. Lógica de Filtros para o Património
-    const tiposUnicos = useMemo(() =>
-            Array.from(new Set(bucketData.map(item => item.tipo?.titulo).filter(Boolean))),
-        [bucketData]);
+    // 2. Lógica de Proximidade: Abrir e FECHAR popups
+    useEffect(() => {
+        if (!userPos || !bucketData) return;
 
-    const classUnicas = useMemo(() =>
-            Array.from(new Set(bucketData.map(item => item.classificacao?.titulo).filter(Boolean))),
-        [bucketData]);
+        const PROXIMITY_RADIUS = 50; // metros para abrir
+        const EXIT_RADIUS = 60;      // metros para fechar (margem de erro para evitar oscilação)
 
-    const filteredData = useMemo(() => {
-        return bucketData.filter(item => {
-            const matchesTipo = filterTipo === 'all' || item.tipo?.titulo === filterTipo;
-            const matchesClass = filterClass === 'all' || item.classificacao?.titulo === filterClass;
-            const hasCoords = item.coordenadas?.lat != null && item.coordenadas?.lng != null;
-            return matchesTipo && matchesClass && hasCoords;
+        bucketData.forEach(item => {
+            if (!item.coordenadas) return;
+
+            const dist = getDistance(
+                userPos[0], userPos[1],
+                item.coordenadas.lat, item.coordenadas.lng
+            );
+
+            const marker = markersRef.current[item._id];
+            if (!marker) return;
+
+            // LÓGICA DE ENTRADA: Se estiver perto e não for a popup ativa atual
+            if (dist <= PROXIMITY_RADIUS && activePopupId !== item._id) {
+                marker.openPopup();
+                setActivePopupId(item._id);
+                if ("vibrate" in navigator) navigator.vibrate(200);
+            }
+
+            // LÓGICA DE SAÍDA: Se se afastar e for a popup que estava aberta
+            else if (dist > EXIT_RADIUS && activePopupId === item._id) {
+                marker.closePopup();
+                setActivePopupId(null);
+            }
         });
-    }, [bucketData, filterTipo, filterClass]);
-
-    // 3. Estilos do Mapa
-    const styleLimite = (feature: any) => ({
-        fillColor: feature.properties?.cor_freguesia || '#B5EAD7',
-        weight: 1.5,
-        opacity: 0.6,
-        color: '#444',
-        fillOpacity: 0.2
-    });
+    }, [userPos, bucketData, activePopupId]);
 
     return (
         <div className="relative w-full h-full flex flex-col border rounded-lg overflow-hidden bg-white shadow-xl">
-
-            {/* --- Cabeçalho e Filtros --- */}
-            <div className="p-4 bg-white border-b flex flex-wrap items-center justify-between gap-4 z-[1000]">
-                <div className="flex gap-4">
-                    <div className="flex flex-col">
-                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Tipo de Bem</label>
-                        <select
-                            className="text-sm border rounded-md px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500"
-                            value={filterTipo}
-                            onChange={(e) => setFilterTipo(e.target.value)}
-                        >
-                            <option value="all">Todos</option>
-                            {tiposUnicos.map(t => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                    </div>
-
-                    <div className="flex flex-col">
-                        <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Classificação</label>
-                        <select
-                            className="text-sm border rounded-md px-2 py-1.5 bg-gray-50 outline-none focus:border-blue-500"
-                            value={filterClass}
-                            onChange={(e) => setFilterClass(e.target.value)}
-                        >
-                            <option value="all">Todas</option>
-                            {classUnicas.map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
-                    </div>
+            <div className="p-3 bg-white border-b flex justify-between items-center z-[1000]">
+                <div className="flex flex-col">
+                    <span className="text-[10px] font-black text-blue-600 uppercase">Exploração em tempo real</span>
+                    <span className="text-xs text-gray-400">{userPos ? "Sinal GPS Estável" : "A aguardar GPS..."}</span>
                 </div>
-
-                {/* Botão de Controlo de Seguimento GPS */}
                 <button
                     onClick={() => setIsTracking(!isTracking)}
-                    className={`px-3 py-2 rounded-md text-xs font-bold transition-colors ${
-                        isTracking ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                    className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all ${
+                        isTracking ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-100 text-gray-500'
                     }`}
                 >
-                    {isTracking ? '📍 A Seguir GPS' : '📍 Fixar Mapa'}
+                    {isTracking ? 'Seguir utilizador' : 'Mapa Livre'}
                 </button>
             </div>
 
-            {/* --- Mapa --- */}
             <div className="relative flex-grow h-[70vh]">
-                <MapContainer
-                    center={center}
-                    zoom={zoom}
-                    style={{ height: '100%', width: '100%' }}
-                    scrollWheelZoom={true}
-                >
-                    <TileLayer
-                        attribution='&copy; OpenStreetMap'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    />
+                <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
+                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
-                    {/* Auto-recenter quando em modo tracking */}
                     {userPos && isTracking && <RecenterAutomatically coords={userPos} />}
 
-                    {/* Marcador do Utilizador */}
+                    {/* Utilizador */}
                     {userPos && (
-                        <Marker position={userPos} icon={userLocationIcon} zIndexOffset={1000}>
-                            <Popup>Sua localização atual</Popup>
-                        </Marker>
+                        <Marker position={userPos} icon={userLocationIcon} zIndexOffset={1000} />
                     )}
 
-                    {/* Polígonos GeoJSON */}
+                    {/* Património */}
+                    {bucketData.map((item) => {
+                        if (!item.coordenadas) return null;
+                        return (
+                            <Marker
+                                key={item._id}
+                                ref={(el) => { if (el) markersRef.current[item._id] = el; }}
+                                position={[item.coordenadas.lat, item.coordenadas.lng]}
+                                icon={createCustomIcon(item.classificacao?.titulo === "Monumento Nacional" ? "#e11d48" : "#2563eb")}
+                            >
+                                <Popup autoClose={false} closeOnClick={false}>
+                                    <div className="p-1 max-w-[150px]">
+                                        <h4 className="font-bold text-sm leading-tight text-gray-800">{item.designacao}</h4>
+                                        <div className="mt-2 pt-2 border-t flex justify-between items-center">
+                                            <Link to={`/heritages/${item._id}`} className="text-blue-600 font-black text-[10px] uppercase">
+                                                Ver Guia
+                                            </Link>
+                                            <span className="text-[9px] text-gray-400 italic">50m de si</span>
+                                        </div>
+                                    </div>
+                                </Popup>
+                            </Marker>
+                        );
+                    })}
+
+                    {/* Limites Freguesias */}
                     {limites.map((lim, idx) => lim.geometria && (
                         <GeoJSON
                             key={`geo-${lim.id || idx}`}
-                            data={{
-                                type: 'Feature',
-                                geometry: lim.geometria,
-                                properties: { cor_freguesia: lim.cor_area }
-                            } as any}
-                            style={styleLimite}
+                            data={{ type: 'Feature', geometry: lim.geometria } as any}
+                            style={() => ({ color: '#666', weight: 0.5, fillOpacity: 0.03, dashArray: '5,5' })}
                         />
-                    ))}
-
-                    {/* Itens do Património (Marcadores) */}
-                    {filteredData.map((item) => (
-                        <Marker
-                            key={item._id}
-                            position={[item.coordenadas!.lat, item.coordenadas!.lng]}
-                            icon={createCustomIcon(item.classificacao?.titulo === "Monumento Nacional" ? "#e11d48" : "#2563eb")}
-                        >
-                            <Popup>
-                                <div className="p-1 min-w-[180px]">
-                                    <h4 className="font-bold text-sm mb-1">{item.designacao}</h4>
-                                    <div className="flex gap-1 mb-2">
-                                        <span className="text-[9px] bg-gray-100 px-1 py-0.5 rounded text-gray-600 font-bold uppercase">
-                                            {item.tipo?.titulo}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-gray-500 italic mb-2 line-clamp-2">
-                                        {getDescriptionText(item.descricao || [])}
-                                    </p>
-                                    <Link
-                                        to={`/heritages/${item._id}`}
-                                        className="text-blue-600 font-bold text-xs hover:underline block border-t pt-2"
-                                    >
-                                        Ver Detalhes &rarr;
-                                    </Link>
-                                </div>
-                            </Popup>
-                        </Marker>
                     ))}
                 </MapContainer>
             </div>
