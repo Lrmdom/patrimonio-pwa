@@ -267,14 +267,35 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
                             </Popup>
                         </Marker>
                     ))}
+                    {limites.map((lim, idx) => {
+                        if (!lim.geometria) return null;
 
-                    {limites.map((lim, idx) => lim.geometria && (
-                        <GeoJSON
-                            key={`geo-${idx}`}
-                            data={{ type: 'Feature', geometry: lim.geometria } as any}
-                            style={() => ({ color: '#666', weight: 0.5, fillOpacity: 0.03, dashArray: '5,5' })}
-                        />
-                    ))}
+                        // Criamos uma cópia limpa da geometria sem o campo CRS
+                        const { crs, ...geometriaLimpa } = lim.geometria;
+debugger;
+                        const feature = {
+                            type: 'Feature',
+                            geometry: geometriaLimpa,
+                            properties: { nome: lim.nome_freguesia }, // Útil para popups depois
+                            // 🟢 AQUI: Passamos a cor do banco para a feature
+                            cor_fundo: lim.cor_area || '#666666'
+                        };
+
+                        return (
+                            <GeoJSON
+                                key={`geo-${lim.id}`}
+                                data={feature as any}
+                                style={(feature) => ({
+                                    // 🟢 AQUI: O Leaflet acede à cor que injetamos acima
+                                    fillColor: feature?.cor_fundo,
+                                    color: '#444444',      // Cor da linha de contorno
+                                    weight: 1,             // Espessura da linha
+                                    fillOpacity: 0.4,      // Opacidade do preenchimento (ajuste a gosto)
+                                    dashArray: '5,5'       // Linha tracejada
+                                })}
+                            />
+                        );
+                    })}
                 </MapContainer>
             </div>
         </div>
