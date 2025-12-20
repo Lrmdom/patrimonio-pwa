@@ -26,7 +26,12 @@ export default function About() {
 
     return (
         <>
-
+            <audio controls>
+                <source
+                    src="https://sanity-r2-worker.lmatiasdomingos.workers.dev/2025-12-20T14-56-36.787Z-sample-12s.mp3"
+                    type="audio/mpeg"/>
+                O teu browser não suporta áudio.
+            </audio>
             <div className="pt-16">
 
                 <div className="relative">
