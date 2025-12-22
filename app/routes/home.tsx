@@ -8,7 +8,7 @@ import { supabase } from "~/auth/utils/supabase";
 // import("./Mapcomponent.client")
 const MapComponent = React.lazy(() =>
     import("~/components/Mapcomponent.client").then(module => ({
-        default: module.MapComponentClient || module.default
+        default: module.MapComponentClient
     }))
 );
 
@@ -39,6 +39,7 @@ export function Home() {
                 )}
             </div>
             {/* 🟢 O Suspense é obrigatório ao usar React.lazy */}
+            {typeof window !== "undefined" && (
             <Suspense fallback={<div style={{ height: '70vh' }}>A carregar mapa...</div>}>
                 <MapComponent
                     bucketData={bucketData}
@@ -46,6 +47,7 @@ export function Home() {
                     center={TAVIRA_CENTER}
                     zoom={INITIAL_ZOOM} ocorrencias={[]}                />
             </Suspense>
+            )}
         </>
     );
 }
