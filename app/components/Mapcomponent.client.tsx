@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -7,7 +7,6 @@ import ARPanel from './ARPanel';
 
 const R2_PUBLIC_URL = "https://pub-72037178c35c4cb1b3448777a2c80f0a.r2.dev";
 
-// --- Interfaces ---
 export interface LimiteAdministrativo {
     id: number;
     nome_freguesia: string;
@@ -19,7 +18,7 @@ export interface LimiteAdministrativo {
 
 interface HeritageItem {
     _id: string;
-    designacao: string;
+    title: string;
     coordenadas: { lat: number; lng: number } | null;
     tipo?: { titulo: string };
     classificacao?: { titulo: string };
@@ -42,7 +41,6 @@ interface MapProps {
     zoom: number;
 }
 
-// --- UTIL: Cálculo de Distância ---
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371e3;
     const φ1 = lat1 * Math.PI / 180;
@@ -83,6 +81,12 @@ const userLocationIcon = L.divIcon({
                 </svg>
             </div>
         </div>
+        <style>
+            @keyframes pulse {
+                0% { transform: scale(0.6); opacity: 0.8; }
+                100% { transform: scale(1.2); opacity: 0; }
+            }
+        </style>
     `,
     iconSize: [30, 30],
     iconAnchor: [15, 15]
@@ -99,7 +103,6 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
     const [audioEnabled, setAudioEnabled] = useState(false);
     const markersRef = useRef<{ [key: string]: L.Marker }>({});
 
-    // Inicialização do Áudio
     useEffect(() => {
         audioRef.current = new Audio();
         const handleAudioState = () => {
@@ -127,7 +130,6 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
         }
     };
 
-    // Geolocation
     useEffect(() => {
         if (typeof window !== "undefined" && "geolocation" in navigator) {
             const watchId = navigator.geolocation.watchPosition(
@@ -139,7 +141,6 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
         }
     }, []);
 
-    // Proximidade e Áudio Automático
     useEffect(() => {
         if (!userPos || !bucketData) return;
         const PROXIMITY_RADIUS = 50;
@@ -150,43 +151,49 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
             const dist = getDistance(userPos[0], userPos[1], item.coordenadas.lat, item.coordenadas.lng);
             const marker = markersRef.current[item._id];
 
-            if (dist <= PROXIMITY_RADIUS && activePopupId !== item._id) {
-                setActivePopupId(item._id);
-                marker?.openPopup();
-                if ("vibrate" in navigator) navigator.vibrate(200);
-                if (audioEnabled && audioRef.current && item.audioNarracao?.fileKey) {
-                    const publicUrl = `${R2_PUBLIC_URL}/${item.audioNarracao.fileKey}`;
-                    if (audioRef.current.src !== publicUrl) {
-                        audioRef.current.src = publicUrl;
-                        audioRef.current.play().catch(e => console.error("Erro Playback", e));
+            // SÓ ENTRA SE: estiver perto E o popup ativo ainda não for este
+            if (dist <= PROXIMITY_RADIUS) {
+                if (activePopupId !== item._id) {
+                    setActivePopupId(item._id);
+                    marker?.openPopup();
+
+                    // O erro de vibração acontece porque o browser bloqueia vibração
+                    // sem um clique real do utilizador antes.
+                    if ("vibrate" in navigator) {
+                        try { navigator.vibrate(200); } catch (e) {}
+                    }
+
+                    if (audioEnabled && audioRef.current && item.audioNarracao?.fileKey) {
+                        const publicUrl = `${R2_PUBLIC_URL}/${item.audioNarracao.fileKey}`;
+                        if (audioRef.current.src !== publicUrl) {
+                            audioRef.current.src = publicUrl;
+                            audioRef.current.play().catch(e => console.warn("Autoplay bloqueado"));
+                        }
                     }
                 }
-            } else if (dist > EXIT_RADIUS && activePopupId === item._id) {
+            }
+            // SÓ ENTRA SE: estiver longe E este era o popup que estava aberto
+            else if (dist > EXIT_RADIUS && activePopupId === item._id) {
                 marker?.closePopup();
                 setActivePopupId(null);
                 audioRef.current?.pause();
             }
         });
-    }, [userPos, bucketData, activePopupId, audioEnabled]);
+    }, [userPos, bucketData, audioEnabled]); // Removi o activePopupId das dependências para quebrar o loop
 
     const handleOpenAR = (item: HeritageItem) => {
-        if (audioRef.current) audioRef.current.pause(); // Pausa áudio ao entrar em AR
         setActiveARItem(item);
     };
 
-    const handleCloseAR = () => setActiveARItem(null);
-
-    // Renderização protegida para SSR
-    if (typeof window === "undefined") return null;
+    const handleCloseAR = () => {
+        setActiveARItem(null);
+    };
 
     return (
         <div className="relative w-full h-full border rounded-lg overflow-hidden bg-white shadow-xl" onClick={handleEnableAudio}>
 
-            {/* O MAPA nunca é desmontado, apenas escondido com CSS inline para evitar erros do Leaflet */}
-            <div
-                className="w-full h-full flex flex-col"
-                style={{ display: activeARItem ? 'none' : 'flex' }}
-            >
+            {/* O mapa é envolvido numa div que apenas ESCONDE (hidden) em vez de ser removida do DOM */}
+            <div className={`w-full h-full flex flex-col ${activeARItem ? 'hidden' : 'block'}`}>
                 <div className="p-3 bg-white border-b flex justify-between items-center z-[1000]">
                     <div className="flex flex-col">
                         <span className="text-[10px] font-black text-blue-600 uppercase">GPS Ativo</span>
@@ -203,7 +210,6 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
                 <div className="relative flex-grow h-[70vh]">
                     <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }}>
                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
                         {userPos && isTracking && <RecenterAutomatically coords={userPos} />}
                         {userPos && <Marker position={userPos} icon={userLocationIcon} zIndexOffset={1000} />}
 
@@ -216,45 +222,62 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
                             >
                                 <Popup autoClose={false} closeOnClick={false}>
                                     <div className="p-0 w-[220px] flex flex-col overflow-hidden bg-white rounded-lg border-none shadow-none">
-                                        {item.galeria?.[0]?.url && (
+                                        {item.galeria && item.galeria[0]?.url ? (
                                             <div className="w-full h-28 overflow-hidden bg-gray-100 border-b">
-                                                <img
-                                                    src={`${item.galeria[0].url}?w=200&h=200&fit=crop&auto=format&q=75`}
-                                                    alt={item.designacao}
-                                                    className="w-full h-full object-cover"
-                                                />
+                                                <img src={`${item.galeria[0].url}?w=200&h=200&fit=crop&auto=format&q=75`} alt={item.title} className="w-full h-full object-cover" />
                                             </div>
+                                        ) : (
+                                            <div className="w-full h-2 bg-blue-600"></div>
                                         )}
+
                                         <div className="p-3 flex flex-col gap-2">
-                                            <h4 className="font-bold text-sm leading-tight text-gray-800">{item.designacao}</h4>
+                                            <div>
+                                                <h4 className="font-bold text-sm leading-tight text-gray-800">{item.title}</h4>
+                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                    <span className="text-[7px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold">{item.tipo?.titulo || 'Património'}</span>
+                                                    {item.classificacao?.titulo && (
+                                                        <span className="text-[7px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded uppercase font-bold">{item.classificacao.titulo}</span>
+                                                    )}
+                                                </div>
+                                            </div>
 
                                             {item.audioNarracao?.fileKey && (
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (!audioRef.current) return;
-                                                        const url = `${R2_PUBLIC_URL}/${item.audioNarracao!.fileKey}`;
-                                                        if (audioRef.current.src === url && isPlaying) {
-                                                            audioRef.current.pause();
-                                                        } else {
-                                                            audioRef.current.src = url;
-                                                            audioRef.current.play();
-                                                        }
-                                                    }}
-                                                    className="bg-blue-600 text-white rounded-full p-2 w-fit"
-                                                >
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                                        {isPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
-                                                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                                                        ) : (
-                                                            <path d="M8 5v14l11-7z"/>
-                                                        )}
-                                                    </svg>
-                                                </button>
+                                                <div className="bg-blue-50/50 rounded-lg p-2 border border-blue-100 flex items-center gap-3">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (audioRef.current) {
+                                                                const isThisActive = audioRef.current.src.includes(item.audioNarracao!.fileKey);
+                                                                if (isThisActive && isPlaying) {
+                                                                    audioRef.current.pause();
+                                                                } else {
+                                                                    audioRef.current.src = `${R2_PUBLIC_URL}/${item.audioNarracao!.fileKey}`;
+                                                                    audioRef.current.play();
+                                                                }
+                                                            }
+                                                        }}
+                                                        className="bg-blue-600 text-white rounded-full p-2 shadow-sm flex-shrink-0"
+                                                    >
+                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                                            {isPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
+                                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                                                            ) : (
+                                                                <path d="M8 5v14l11-7z"/>
+                                                            )}
+                                                        </svg>
+                                                    </button>
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[9px] font-bold text-blue-900 uppercase">Narração</span>
+                                                        <span className="text-[8px] text-blue-600">Disponível aqui</span>
+                                                    </div>
+                                                </div>
                                             )}
 
                                             <div className="mt-1 pt-2 border-t border-gray-100 flex justify-between items-center">
-                                                <Link to={`/heritages/${item._id}`} className="text-blue-600 font-black text-[9px] uppercase">Detalhes</Link>
+                                                <Link to={`/heritages/${item._id}`} className="text-blue-600 font-black text-[9px] uppercase">Detalhes →</Link>
+                                                <span className="text-[9px] font-medium text-gray-400">
+                                                    {userPos ? `${Math.round(getDistance(userPos[0], userPos[1], item.coordenadas!.lat, item.coordenadas!.lng))}m` : '--'}
+                                                </span>
                                                 <button
                                                     onClick={(e) => { e.stopPropagation(); handleOpenAR(item); }}
                                                     className="bg-black text-white px-2 py-1 rounded text-[8px] font-bold flex items-center gap-1"
@@ -268,16 +291,20 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
                                 </Popup>
                             </Marker>
                         ))}
-
                         {limites.map((lim) => {
                             if (!lim.geometria) return null;
                             const { crs, ...geometriaLimpa } = lim.geometria;
+                            const feature = {
+                                type: 'Feature',
+                                geometry: geometriaLimpa,
+                                properties: { nome: lim.nome_freguesia, cor_fundo: lim.cor_area || '#666666' }
+                            };
                             return (
                                 <GeoJSON
                                     key={`geo-${lim.id}`}
-                                    data={{ type: 'Feature', geometry: geometriaLimpa, properties: {} } as any}
-                                    style={() => ({
-                                        fillColor: lim.cor_area || '#666666',
+                                    data={feature as any}
+                                    style={(f) => ({
+                                        fillColor: f?.properties.cor_fundo,
                                         color: '#444444',
                                         weight: 1,
                                         fillOpacity: 0.4,
@@ -290,12 +317,8 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
                 </div>
             </div>
 
-            {/* O painel AR aparece como overlay quando ativo */}
-            {activeARItem && (
-                <Suspense fallback={<div className="fixed inset-0 bg-black text-white p-10">A carregar AR...</div>}>
-                    <ARPanel item={activeARItem} onClose={handleCloseAR} />
-                </Suspense>
-            )}
+            {/* O ARPanel é renderizado por cima de tudo */}
+            {activeARItem && <ARPanel items={bucketData} onClose={handleCloseAR} />}
         </div>
     );
 };

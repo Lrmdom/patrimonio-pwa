@@ -1,112 +1,204 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
+import * as THREE from 'three';
 
-export default function ARPanel({ item, onClose }: { item: any, onClose: () => void }) {
-    const lat = item.coordenadas?.lat;
-    const lng = item.coordenadas?.lng;
-    const nome = item.designacao || "Património";
+// Componente para cada marcador individual no espaço AR
+function HeritageAnchor({
+                            item,
+                            userPos,
+                            heading
+                        }: {
+    item: any;
+    userPos: [number, number];
+    heading: number;
+}) {
+    const meshRef = useRef<THREE.Mesh>(null!);
+    const [distance, setDistance] = useState(0);
+
+    // Suavização do heading para evitar que os objetos tremam (Filtro passa-baixo)
+    const smoothHeading = useRef(heading);
+
+    useFrame(() => {
+        if (!meshRef.current || !userPos || !item?.coordenadas) return;
+
+        // Suaviza a rotação da bússola
+        smoothHeading.current = THREE.MathUtils.lerp(
+            smoothHeading.current,
+            heading,
+            0.05
+        );
+
+        const headingRad = THREE.MathUtils.degToRad(smoothHeading.current);
+
+        // Coordenadas do alvo
+        const targetLat = item.coordenadas.lat;
+        const targetLng = item.coordenadas.lng;
+
+        // 1. Cálculo de distâncias geográficas (Diferença em metros)
+        const latDiff = targetLat - userPos[0];
+        const lngDiff = targetLng - userPos[1];
+
+        // Conversão aproximada de graus para metros
+        const z = -latDiff * 111320;
+        const x = lngDiff * (111320 * Math.cos((userPos[0] * Math.PI) / 180));
+
+        // 2. Rotação do mundo com base na bússola (Heading)
+        // Isso faz com que o "Norte" do Three.js coincida com o Norte Real
+        const rotatedX = x * Math.cos(headingRad) - z * Math.sin(headingRad);
+        const rotatedZ = x * Math.sin(headingRad) + z * Math.cos(headingRad);
+
+        const d = Math.sqrt(rotatedX ** 2 + rotatedZ ** 2);
+        setDistance(d);
+
+        // 3. Posicionamento suave no espaço 3D
+        // Y fixado em -1.5 para parecer estar à altura do chão/peito
+        meshRef.current.position.lerp(
+            new THREE.Vector3(rotatedX, -1.5, rotatedZ),
+            0.1
+        );
+
+        // 4. Escala dinâmica (Aumenta ligeiramente quando longe para manter visível)
+        const dynamicScale = THREE.MathUtils.clamp(40 / (d + 10), 1, 6);
+        meshRef.current.scale.setScalar(dynamicScale);
+    });
 
     return (
-        <div className="fixed inset-0 z-[5000] bg-black">
-            {/* Interface UI */}
-            <div className="absolute top-10 left-0 right-0 z-[5002] flex justify-center">
-                <button
-                    onClick={onClose}
-                    className="bg-white text-black px-6 py-2 rounded-full font-bold shadow-lg uppercase text-xs active:scale-95 transition-transform"
-                >
-                    ✕ Sair da Câmara
-                </button>
-            </div>
-
-            <iframe
-                allow="camera; geolocation"
-                srcDoc={`
-                    <html>
-                    <head>
-                        <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
-                        <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
-                        <script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
-                    </head>
-                    <body style="margin: 0; overflow: hidden;">
-                        <script>
-                            // Lógica de Suavização (Estabilização)
-                            AFRAME.registerComponent('lerp-stabilizer', {
-                                init: function () {
-                                    this.targetPos = new THREE.Vector3();
-                                    this.currentPos = new THREE.Vector3();
-                                    this.firstPos = true;
-                                },
-                                tick: function () {
-                                    const gpsPos = this.el.object3D.position;
-                                    if (this.firstPos && gpsPos.x !== 0) {
-                                        this.currentPos.copy(gpsPos);
-                                        this.firstPos = false;
-                                    }
-                                    // Suaviza o movimento em 5% por frame
-                                    this.currentPos.lerp(gpsPos, 0.05);
-                                    this.el.object3D.position.copy(this.currentPos);
-                                }
-                            });
-
-                            // Lógica de Distância em tempo real
-                            window.addEventListener('gps-camera-update-position', (e) => {
-                                const el = document.querySelector('[gps-entity-place]');
-                                const distance = el.getAttribute('distanceMsg');
-                                const textEl = document.querySelector('#distancia-txt');
-                                if (textEl && distance) {
-                                    textEl.setAttribute('value', distance + 'm');
-                                }
-                            });
-                        </script>
-
-                        <a-scene
-                            vr-mode-ui="enabled: false"
-                            embedded
-                            arjs="sourceType: webcam; debugUIEnabled: false;"
-                        >
-                            <a-camera gps-camera="minDistance: 1;" rotation-reader></a-camera>
-
-                            <a-entity 
-                                gps-entity-place="latitude: ${lat}; longitude: ${lng};" 
-                                lerp-stabilizer
-                            >
-                                <a-entity look-at="[gps-camera]">
-                                    <a-plane color="white" width="6" height="3" position="0 2.5 0" material="opacity: 0.95"></a-plane>
-                                    
-                                    <a-text 
-                                        value="${nome}" 
-                                        align="center" 
-                                        color="black" 
-                                        width="14" 
-                                        position="0 3.2 0.1"
-                                        font="https://cdn.aframe.io/fonts/Exo2Bold.fnt"
-                                    ></a-text>
-
-                                    <a-text 
-                                        id="distancia-txt"
-                                        value="A calcular..." 
-                                        align="center" 
-                                        color="#ff0000" 
-                                        width="12" 
-                                        position="0 2.0 0.1"
-                                    ></a-text>
-
-                                    <a-cylinder color="red" height="8" radius="0.05" position="0 -1.5 0"></a-cylinder>
-                                    <a-sphere color="red" radius="0.3" position="0 -5.5 0"></a-sphere>
-                                </a-entity>
-                            </a-entity>
-                        </a-scene>
-                    </body>
-                    </html>
-                `}
-                className="w-full h-full border-none"
+        <mesh ref={meshRef}>
+            <boxGeometry args={[1.5, 1.5, 1.5]} />
+            <meshStandardMaterial
+                color="cyan"
+                emissive="cyan"
+                emissiveIntensity={2}
+                transparent
+                opacity={0.7}
             />
 
-            {/* Legenda de ajuda no fundo */}
-            <div className="absolute bottom-10 left-0 right-0 z-[5002] px-10 text-center pointer-events-none">
-                <p className="text-white text-[10px] bg-black/40 py-2 rounded-lg backdrop-blur-sm">
-                    Mantenha o telemóvel vertical e aguarde a estabilização do sinal GPS.
-                </p>
+            <Html
+                center
+                sprite
+                transform
+                distanceFactor={10}
+                occlude={false}
+                zIndexRange={[100, 0]}
+                style={{ pointerEvents: 'none' }}
+            >
+                <div className="flex flex-col items-center">
+                    <div className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border-b-8 border-cyan-500 min-w-[180px]">
+                        <h4 className="text-black font-black text-[11px] uppercase text-center leading-tight">
+                            {item.title}
+                        </h4>
+                        <div className="text-center mt-2 pt-2 border-t border-gray-100">
+                            <span className="text-xl font-black text-cyan-600">
+                                {Math.round(distance)}m
+                            </span>
+                        </div>
+                    </div>
+                    {/* Haste visual para ligar o objeto ao "chão" */}
+                    <div className="w-1 h-32 bg-gradient-to-t from-cyan-500 to-transparent opacity-40" />
+                </div>
+            </Html>
+        </mesh>
+    );
+}
+
+// Painel AR Principal
+export default function ARPanel({
+                                    items, // Agora recebe a lista de itens do MapComponent
+                                    onClose
+                                }: {
+    items: any[];
+    onClose: () => void;
+}) {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    const [ready, setReady] = useState(false);
+    const [userPos, setUserPos] = useState<[number, number] | null>(null);
+    const [heading, setHeading] = useState<number>(0);
+
+    // Filtra apenas itens que possuem coordenadas válidas para evitar erros no Canvas
+    const validItems = items?.filter(i => i.coordenadas?.lat && i.coordenadas?.lng) || [];
+
+    useEffect(() => {
+        // Ativar a câmera do dispositivo
+        navigator.mediaDevices
+            .getUserMedia({ video: { facingMode: 'environment' } })
+            .then(stream => {
+                if (videoRef.current) videoRef.current.srcObject = stream;
+            });
+
+        // Monitorar posição GPS
+        const watchId = navigator.geolocation.watchPosition(
+            p => setUserPos([p.coords.latitude, p.coords.longitude]),
+            null,
+            { enableHighAccuracy: true }
+        );
+
+        return () => navigator.geolocation.clearWatch(watchId);
+    }, []);
+
+    const handleStart = async () => {
+        // Solicitar permissão para sensores no iOS
+        if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
+            const res = await (DeviceOrientationEvent as any).requestPermission();
+            if (res !== 'granted') return;
+        }
+
+        window.addEventListener('deviceorientation', (e: any) => {
+            const h = e.webkitCompassHeading ?? (e.alpha ? 360 - e.alpha : 0);
+            setHeading(h);
+        }, true);
+
+        setReady(true);
+    };
+
+    return (
+        <div className="fixed inset-0 z-[5000] bg-black overflow-hidden">
+            {/* Camada 0: Feed da Câmera */}
+            <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="absolute inset-0 w-full h-full object-cover z-0 opacity-60"
+            />
+
+            {/* Camada 1: Canvas 3D (Three.js) */}
+            <div className="absolute inset-0 z-10">
+                <Canvas camera={{ position: [0, 0, 0], fov: 70 }}>
+                    <ambientLight intensity={1.5} />
+                    <pointLight position={[10, 10, 10]} intensity={2} />
+
+                    {ready && userPos && validItems.map((item) => (
+                        <HeritageAnchor
+                            key={item._id || item.id}
+                            item={item}
+                            userPos={userPos}
+                            heading={heading}
+                        />
+                    ))}
+                </Canvas>
             </div>
+
+            {/* Camada 2: Interface de Utilizador (UI) */}
+            <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+                {!ready && (
+                    <button
+                        onClick={handleStart}
+                        className="pointer-events-auto bg-cyan-500 text-black px-12 py-5 rounded-full font-black shadow-[0_0_30px_rgba(6,182,212,0.5)] uppercase tracking-tighter"
+                    >
+                        Sincronizar Bússola
+                    </button>
+                )}
+            </div>
+
+            {ready && (
+                <button
+                    onClick={onClose}
+                    className="absolute top-10 left-6 z-40 bg-black/40 backdrop-blur-md text-white w-12 h-12 rounded-full font-bold border border-white/20"
+                >
+                    ✕
+                </button>
+            )}
         </div>
     );
 }
