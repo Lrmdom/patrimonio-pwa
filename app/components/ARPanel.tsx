@@ -1,202 +1,161 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 
-// Componente para cada marcador individual no espaço AR
-function HeritageAnchor({
-                            item,
-                            userPos,
-                            heading
-                        }: {
-    item: any;
-    userPos: [number, number];
-    heading: number;
-}) {
+function HeritageAnchor({ item, userPos }: { item: any; userPos: [number, number] }) {
     const meshRef = useRef<THREE.Mesh>(null!);
-    const [distance, setDistance] = useState(0);
 
-    // Suavização do heading para evitar que os objetos tremam (Filtro passa-baixo)
-    const smoothHeading = useRef(heading);
-
-    useFrame(() => {
-        if (!meshRef.current || !userPos || !item?.coordenadas) return;
-
-        // Suaviza a rotação da bússola
-        smoothHeading.current = THREE.MathUtils.lerp(
-            smoothHeading.current,
-            heading,
-            0.05
+    const distance = useMemo(() => {
+        if (!userPos || !item?.coordenadas) return 0;
+        return Math.sqrt(
+            Math.pow((item.coordenadas.lat - userPos[0]) * 111320, 2) +
+            Math.pow((item.coordenadas.lng - userPos[1]) * 111320 * Math.cos(userPos[0] * Math.PI / 180), 2)
         );
+    }, [userPos, item.coordenadas]);
 
-        const headingRad = THREE.MathUtils.degToRad(smoothHeading.current);
-
-        // Coordenadas do alvo
-        const targetLat = item.coordenadas.lat;
-        const targetLng = item.coordenadas.lng;
-
-        // 1. Cálculo de distâncias geográficas (Diferença em metros)
-        const latDiff = targetLat - userPos[0];
-        const lngDiff = targetLng - userPos[1];
-
-        // Conversão aproximada de graus para metros
+    const worldPosition = useMemo(() => {
+        if (!userPos || !item?.coordenadas) return new THREE.Vector3(0, 0, 0);
+        const latDiff = item.coordenadas.lat - userPos[0];
+        const lngDiff = item.coordenadas.lng - userPos[1];
         const z = -latDiff * 111320;
         const x = lngDiff * (111320 * Math.cos((userPos[0] * Math.PI) / 180));
 
-        // 2. Rotação do mundo com base na bússola (Heading)
-        // Isso faz com que o "Norte" do Three.js coincida com o Norte Real
-        const rotatedX = x * Math.cos(headingRad) - z * Math.sin(headingRad);
-        const rotatedZ = x * Math.sin(headingRad) + z * Math.cos(headingRad);
-
-        const d = Math.sqrt(rotatedX ** 2 + rotatedZ ** 2);
-        setDistance(d);
-
-        // 3. Posicionamento suave no espaço 3D
-        // Y fixado em -1.5 para parecer estar à altura do chão/peito
-        meshRef.current.position.lerp(
-            new THREE.Vector3(rotatedX, -1.5, rotatedZ),
-            0.1
-        );
-
-        // 4. Escala dinâmica (Aumenta ligeiramente quando longe para manter visível)
-        const dynamicScale = THREE.MathUtils.clamp(40 / (d + 10), 1, 6);
-        meshRef.current.scale.setScalar(dynamicScale);
-    });
+        // Altitude: Itens distantes sobem ligeiramente (Perspetiva)
+        const y = 5 + (distance * 0.015);
+        return new THREE.Vector3(x, y, z);
+    }, [userPos, item.coordenadas, distance]);
 
     return (
-        <mesh ref={meshRef}>
-            <boxGeometry args={[1.5, 1.5, 1.5]} />
-            <meshStandardMaterial
-                color="cyan"
-                emissive="cyan"
-                emissiveIntensity={2}
-                transparent
-                opacity={0.7}
-            />
-
-            <Html
-                center
-                sprite
-                transform
-                distanceFactor={10}
-                occlude={false}
-                zIndexRange={[100, 0]}
-                style={{ pointerEvents: 'none' }}
-            >
-                <div className="flex flex-col items-center">
-                    <div className="bg-white/95 backdrop-blur-md p-4 rounded-2xl shadow-2xl border-b-8 border-cyan-500 min-w-[180px]">
-                        <h4 className="text-black font-black text-[11px] uppercase text-center leading-tight">
-                            {item.title}
-                        </h4>
-                        <div className="text-center mt-2 pt-2 border-t border-gray-100">
-                            <span className="text-xl font-black text-cyan-600">
-                                {Math.round(distance)}m
-                            </span>
+        <mesh ref={meshRef} position={worldPosition}>
+            <sphereGeometry args={[1.2, 16, 16]} />
+            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={10} toneMapped={false} />
+            <Html center distanceFactor={12}>
+                <div className="flex flex-col items-center pointer-events-none select-none">
+                    <div className="bg-black/80 backdrop-blur-xl p-4 rounded-2xl border-b-4 border-cyan-400 shadow-[0_0_20px_rgba(0,255,255,0.3)] min-w-[160px]">
+                        <h4 className="text-white font-black text-[11px] uppercase text-center leading-none mb-2">{item.title}</h4>
+                        <div className="text-cyan-400 font-black text-lg text-center font-mono">
+                            {distance > 1000 ? `${(distance/1000).toFixed(1)}km` : `${Math.round(distance)}m`}
                         </div>
                     </div>
-                    {/* Haste visual para ligar o objeto ao "chão" */}
-                    <div className="w-1 h-32 bg-gradient-to-t from-cyan-500 to-transparent opacity-40" />
+                    <div className="w-[1.5px] bg-gradient-to-t from-cyan-400 to-transparent opacity-60" style={{ height: `${60 + (distance * 0.03)}px` }} />
                 </div>
             </Html>
         </mesh>
     );
 }
 
-// Painel AR Principal
-export default function ARPanel({
-                                    items, // Agora recebe a lista de itens do MapComponent
-                                    onClose
-                                }: {
-    items: any[];
-    onClose: () => void;
-}) {
+function ARScene({ items, userPos, orientationRef }: { items: any[], userPos: [number, number], orientationRef: React.MutableRefObject<any> }) {
+    const { camera } = useThree();
+    const targetQuaternion = useRef(new THREE.Quaternion());
+
+    useFrame(() => {
+        const { alpha, beta, gamma } = orientationRef.current;
+
+        const a = THREE.MathUtils.degToRad(alpha);
+        const b = THREE.MathUtils.degToRad(beta);
+        const g = THREE.MathUtils.degToRad(gamma);
+
+        // ROTAÇÃO ROBUSTA:
+        // Usamos uma matriz de rotação para evitar que o mundo "caia" no chão.
+        // O offset de 90 graus é aplicado para alinhar a câmara traseira com o horizonte.
+        const euler = new THREE.Euler(b + Math.PI / 2, a, -g, 'YXZ');
+        targetQuaternion.current.setFromEuler(euler);
+
+        // Suavização ultra-estável (lerp de 0.05 é muito suave)
+        camera.quaternion.slerp(targetQuaternion.current, 0.05);
+    });
+
+    return (
+        <group>
+            {items.map((item: any) => (
+                <HeritageAnchor key={item._id} item={item} userPos={userPos} />
+            ))}
+        </group>
+    );
+}
+
+export default function ARPanel({ items, onClose }: { items: any[]; onClose: () => void }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [ready, setReady] = useState(false);
     const [userPos, setUserPos] = useState<[number, number] | null>(null);
-    const [heading, setHeading] = useState<number>(0);
-
-    // Filtra apenas itens que possuem coordenadas válidas para evitar erros no Canvas
-    const validItems = items?.filter(i => i.coordenadas?.lat && i.coordenadas?.lng) || [];
+    const orientationRef = useRef({ alpha: 0, beta: 0, gamma: 0 });
 
     useEffect(() => {
-        // Ativar a câmera do dispositivo
-        navigator.mediaDevices
-            .getUserMedia({ video: { facingMode: 'environment' } })
-            .then(stream => {
-                if (videoRef.current) videoRef.current.srcObject = stream;
-            });
+        // Ativa a câmara com resolução máxima disponível
+        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } } })
+            .then(s => { if (videoRef.current) videoRef.current.srcObject = s; });
 
-        // Monitorar posição GPS
         const watchId = navigator.geolocation.watchPosition(
             p => setUserPos([p.coords.latitude, p.coords.longitude]),
-            null,
-            { enableHighAccuracy: true }
+            null, { enableHighAccuracy: true, maximumAge: 0 }
         );
-
         return () => navigator.geolocation.clearWatch(watchId);
     }, []);
 
     const handleStart = async () => {
-        // Solicitar permissão para sensores no iOS
         if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
-            const res = await (DeviceOrientationEvent as any).requestPermission();
-            if (res !== 'granted') return;
+            try {
+                const res = await (DeviceOrientationEvent as any).requestPermission();
+                if (res !== 'granted') return;
+            } catch (e) { console.error(e); }
         }
 
-        window.addEventListener('deviceorientation', (e: any) => {
-            const h = e.webkitCompassHeading ?? (e.alpha ? 360 - e.alpha : 0);
-            setHeading(h);
-        }, true);
+        const handleOrientation = (e: any) => {
+            // Lógica para detetar se é iOS ou Android
+            const compass = e.webkitCompassHeading || (e.alpha ? 360 - e.alpha : 0);
 
+            orientationRef.current = {
+                alpha: compass,
+                beta: e.beta || 0,
+                gamma: e.gamma || 0
+            };
+        };
+
+        window.addEventListener('deviceorientation', handleOrientation, true);
         setReady(true);
     };
 
     return (
-        <div className="fixed inset-0 z-[5000] bg-black overflow-hidden">
-            {/* Camada 0: Feed da Câmera */}
-            <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="absolute inset-0 w-full h-full object-cover z-0 opacity-60"
-            />
+        <div className="fixed inset-0 z-[5000] bg-black overflow-hidden touch-none">
+            <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover opacity-70" />
 
-            {/* Camada 1: Canvas 3D (Three.js) */}
             <div className="absolute inset-0 z-10">
-                <Canvas camera={{ position: [0, 0, 0], fov: 70 }}>
+                <Canvas camera={{ position: [0, 0, 0], fov: 70, near: 0.1, far: 5000 }}>
                     <ambientLight intensity={1.5} />
                     <pointLight position={[10, 10, 10]} intensity={2} />
-
-                    {ready && userPos && validItems.map((item) => (
-                        <HeritageAnchor
-                            key={item._id || item.id}
-                            item={item}
-                            userPos={userPos}
-                            heading={heading}
-                        />
-                    ))}
+                    {ready && userPos && (
+                        <ARScene items={items} userPos={userPos} orientationRef={orientationRef} />
+                    )}
                 </Canvas>
             </div>
 
-            {/* Camada 2: Interface de Utilizador (UI) */}
-            <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-                {!ready && (
+            {!ready && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md p-10">
+                    <div className="relative w-32 h-32 mb-10">
+                        <div className="absolute inset-0 border-4 border-cyan-500/20 rounded-full"></div>
+                        <div className="absolute inset-0 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+                        <div className="absolute inset-0 flex items-center justify-center text-cyan-500">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+                        </div>
+                    </div>
+                    <h2 className="text-white text-3xl font-black mb-4 uppercase text-center tracking-tighter">Radar Ativo</h2>
+                    <p className="text-slate-400 text-center text-sm mb-12 leading-relaxed">Aponte o telemóvel para o horizonte e clique para calibrar a visão 3D.</p>
                     <button
                         onClick={handleStart}
-                        className="pointer-events-auto bg-cyan-500 text-black px-12 py-5 rounded-full font-black shadow-[0_0_30px_rgba(6,182,212,0.5)] uppercase tracking-tighter"
+                        className="bg-cyan-500 text-black px-14 py-5 rounded-2xl font-black text-xl shadow-[0_0_40px_rgba(6,182,212,0.4)] active:scale-95 transition-all uppercase"
                     >
-                        Sincronizar Bússola
+                        Calibrar Horizonte
                     </button>
-                )}
-            </div>
+                </div>
+            )}
 
             {ready && (
                 <button
                     onClick={onClose}
-                    className="absolute top-10 left-6 z-40 bg-black/40 backdrop-blur-md text-white w-12 h-12 rounded-full font-bold border border-white/20"
+                    className="absolute top-10 right-6 z-40 bg-black/60 backdrop-blur-md border border-white/20 w-14 h-14 rounded-2xl text-white flex items-center justify-center"
                 >
-                    ✕
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             )}
         </div>
