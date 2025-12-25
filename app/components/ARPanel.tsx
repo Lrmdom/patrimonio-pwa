@@ -1,7 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
 /* ============================
-   UTILITÁRIOS GEO
+   UTILITÁRIOS GEO OTIMIZADOS
 ============================ */
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371e3;
@@ -10,8 +10,7 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
     const Δφ = (lat2 - lat1) * Math.PI / 180;
     const Δλ = (lon2 - lon1) * Math.PI / 180;
 
-    const a =
-        Math.sin(Δφ / 2) ** 2 +
+    const a = Math.sin(Δφ / 2) ** 2 +
         Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
 
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
@@ -23,123 +22,132 @@ function getBearing(lat1: number, lon1: number, lat2: number, lon2: number) {
     const Δλ = (lon2 - lon1) * Math.PI / 180;
 
     const y = Math.sin(Δλ) * Math.cos(φ2);
-    const x =
-        Math.cos(φ1) * Math.sin(φ2) -
+    const x = Math.cos(φ1) * Math.sin(φ2) -
         Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
 
-    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    const bearing = Math.atan2(y, x) * 180 / Math.PI;
+    return (bearing + 360) % 360;
 }
 
 /* =========================
-   HEADING (bússola real)
+   SISTEMA DE DETECÇÃO DE MOVIMENTO INTELIGENTE
 ========================= */
-/* =========================
-   BÚSSOLA OTIMIZADA (com filtro Kalman simples)
-========================= */
-function useStableHeading(
-    smoothingFactor: number = 0.15,  // Quanto mais baixo, mais suave (0.1-0.3)
-    minUpdateInterval: number = 100  // ms entre updates (100 = 10Hz)
-) {
-    const [heading, setHeading] = useState<number | null>(null);
-    const filteredHeadingRef = useRef<number | null>(null);
-    const lastUpdateRef = useRef<number>(0);
-    const isCalibratingRef = useRef<boolean>(true);
-    const calibrationSamplesRef = useRef<number[]>([]);
+
+// Hook para detecção de orientação com correção de movimento
+function useSmartOrientation() {
+    const [orientation, setOrientation] = useState<{
+        heading: number | null;
+        pitch: number | null;
+        roll: number | null;
+        accuracy: number;
+    }>({
+        heading: null,
+        pitch: null,
+        roll: null,
+        accuracy: 0
+    });
+
+    const lastValues = useRef({
+        alpha: 0,
+        beta: 0,
+        gamma: 0,
+        timestamp: 0
+    });
+
+    const calibrationData = useRef({
+        samples: [] as number[],
+        isCalibrated: false,
+        offset: 0
+    });
 
     useEffect(() => {
-        const requestPermission = async () => {
+        let mounted = true;
+        let animationFrameId: number;
+
+        const updateOrientation = (alpha: number, beta: number, gamma: number) => {
+            if (!mounted) return;
+
+            const now = Date.now();
+            const timeDiff = now - lastValues.current.timestamp;
+
+            // Calcular mudança
+            const deltaAlpha = Math.abs(alpha - lastValues.current.alpha);
+            const deltaBeta = Math.abs(beta - lastValues.current.beta);
+            const deltaGamma = Math.abs(gamma - lastValues.current.gamma);
+
+            // Calibrar nos primeiros segundos
+            if (!calibrationData.current.isCalibrated) {
+                calibrationData.current.samples.push(alpha);
+                if (calibrationData.current.samples.length > 30) { // ~1.5 segundos
+                    const avg = calibrationData.current.samples.reduce((a, b) => a + b, 0) /
+                        calibrationData.current.samples.length;
+                    calibrationData.current.offset = avg > 180 ? 360 - avg : -avg;
+                    calibrationData.current.isCalibrated = true;
+                }
+            }
+
+            // Aplicar calibração
+            let calibratedAlpha = alpha;
+            if (calibrationData.current.isCalibrated) {
+                calibratedAlpha = (alpha + calibrationData.current.offset) % 360;
+                if (calibratedAlpha < 0) calibratedAlpha += 360;
+            }
+
+            // Calcular precisão baseada na estabilidade
+            const movement = Math.sqrt(deltaAlpha ** 2 + deltaBeta ** 2 + deltaGamma ** 2);
+            const accuracy = Math.max(0, 100 - (movement * 10));
+
+            setOrientation({
+                heading: calibratedAlpha,
+                pitch: beta,
+                roll: gamma,
+                accuracy: Math.round(accuracy)
+            });
+
+            lastValues.current = { alpha, beta, gamma, timestamp: now };
+        };
+
+        const handleOrientation = (e: DeviceOrientationEvent) => {
+            if (!mounted || e.alpha === null || e.beta === null || e.gamma === null) return;
+
+            // Suavizar valores
+            const smoothAlpha = lastValues.current.alpha +
+                (e.alpha - lastValues.current.alpha) * 0.3;
+            const smoothBeta = lastValues.current.beta +
+                (e.beta - lastValues.current.beta) * 0.3;
+            const smoothGamma = lastValues.current.gamma +
+                (e.gamma - lastValues.current.gamma) * 0.3;
+
+            updateOrientation(smoothAlpha, smoothBeta, smoothGamma);
+        };
+
+        // Pedir permissão
+        const initOrientation = async () => {
             if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
                 try {
                     const permission = await (DeviceOrientationEvent as any).requestPermission();
-                    if (permission === 'granted') {
-                        startListening();
+                    if (permission === 'granted' && mounted) {
+                        window.addEventListener('deviceorientation', handleOrientation);
                     }
                 } catch (error) {
-                    console.error('Permissão negada para orientação:', error);
+                    console.warn('Permissão de orientação negada');
                 }
             } else {
-                startListening();
+                window.addEventListener('deviceorientation', handleOrientation);
             }
         };
 
-        const startListening = () => {
-            let lastRawHeading: number | null = null;
-
-            const handler = (e: DeviceOrientationEvent) => {
-                if (e.alpha === null || e.alpha === undefined) return;
-
-                const now = Date.now();
-                const rawHeading = e.alpha; // 0-360 graus
-
-                // Filtro temporal
-                if (now - lastUpdateRef.current < minUpdateInterval) return;
-
-                // Calibração inicial (primeiros 2 segundos)
-                if (isCalibratingRef.current) {
-                    calibrationSamplesRef.current.push(rawHeading);
-
-                    if (calibrationSamplesRef.current.length > 20) { // ~1 segundo de amostras
-                        isCalibratingRef.current = false;
-                        console.log('Bússola calibrada');
-                    }
-                    return;
-                }
-
-                // Suavização com filtro de média móvel exponencial
-                if (filteredHeadingRef.current === null) {
-                    filteredHeadingRef.current = rawHeading;
-                } else {
-                    // Corrigir transições 360° ↔ 0°
-                    const current = filteredHeadingRef.current;
-                    let diff = rawHeading - current;
-
-                    // Ajustar para caminho mais curto (problema circular)
-                    if (diff > 180) diff -= 360;
-                    if (diff < -180) diff += 360;
-
-                    // Aplicar filtro de suavização
-                    filteredHeadingRef.current = (current + diff * smoothingFactor) % 360;
-                    if (filteredHeadingRef.current < 0) filteredHeadingRef.current += 360;
-                }
-
-                // Dead zone: ignorar mudanças muito pequenas (< 0.5°)
-                if (lastRawHeading !== null) {
-                    let smallDiff = Math.abs(rawHeading - lastRawHeading);
-                    if (smallDiff > 180) smallDiff = 360 - smallDiff;
-
-                    if (smallDiff < 0.5 && Math.abs(diff || 0) < 0.5) {
-                        return; // Mudança insignificante
-                    }
-                }
-
-                lastRawHeading = rawHeading;
-                setHeading(filteredHeadingRef.current);
-                lastUpdateRef.current = now;
-            };
-
-            window.addEventListener('deviceorientation', handler, true);
-
-            return () => {
-                window.removeEventListener('deviceorientation', handler);
-            };
-        };
-
-        requestPermission();
-
-        // Reset calibration após 5 segundos (se mudar de local)
-        const calibrationTimeout = setTimeout(() => {
-            isCalibratingRef.current = false;
-        }, 5000);
+        initOrientation();
 
         return () => {
-            clearTimeout(calibrationTimeout);
+            mounted = false;
+            window.removeEventListener('deviceorientation', handleOrientation);
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
         };
-    }, [smoothingFactor, minUpdateInterval]);
+    }, []);
 
-    return heading;
+    return orientation;
 }
-
-
 function AudioControlBar({
                              item,
                              onPause,
@@ -221,416 +229,457 @@ function AudioControlBar({
         </div>
     );
 }
-
-
-
-
-
-/* =========================
-   GPS OPTIMIZADO (atualiza a cada 10m)
-========================= */
-function useSmartGPS(
-    minDistance: number = 10,     // 10 metros
-    minTime: number = 10000,      // 10 segundos
-    maxTime: number = 30000       // 30 segundos máximo
-) {
+// Hook para GPS com histórico de movimento
+function useAdvancedGPS() {
     const [position, setPosition] = useState<[number, number] | null>(null);
-    const lastPositionRef = useRef<[number, number] | null>(null);
-    const lastUpdateRef = useRef<number>(0);
-    const lastDistanceRef = useRef<number>(0);
-    const isMovingRef = useRef<boolean>(false);
+    const [speed, setSpeed] = useState<number>(0);
+    const [heading, setHeading] = useState<number | null>(null);
+    const positionHistory = useRef<Array<{lat: number, lng: number, timestamp: number}>>([]);
 
     useEffect(() => {
         if (!navigator.geolocation) return;
 
-        const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-            // Fórmula rápida para distância
-            const x = (lon2 - lon1) * Math.cos((lat1 + lat2) / 2);
-            const y = (lat2 - lat1);
-            return Math.sqrt(x * x + y * y) * 111320; // metros
-        };
-
         const handlePosition = (pos: GeolocationPosition) => {
-            const newPos: [number, number] = [
-                pos.coords.latitude,
-                pos.coords.longitude
-            ];
+            const newPos: [number, number] = [pos.coords.latitude, pos.coords.longitude];
 
+            // Calcular velocidade e direção
             const now = Date.now();
-            const timeSinceLastUpdate = now - lastUpdateRef.current;
+            positionHistory.current.push({
+                lat: newPos[0],
+                lng: newPos[1],
+                timestamp: now
+            });
 
-            // Primeira posição
-            if (!lastPositionRef.current) {
-                setPosition(newPos);
-                lastPositionRef.current = newPos;
-                lastUpdateRef.current = now;
-                return;
+            // Manter apenas últimos 10 pontos
+            if (positionHistory.current.length > 10) {
+                positionHistory.current.shift();
             }
 
-            // Calcular distância desde última atualização
-            const distance = calculateDistance(
-                lastPositionRef.current[0],
-                lastPositionRef.current[1],
-                newPos[0],
-                newPos[1]
-            );
+            // Calcular velocidade se tivermos histórico
+            if (positionHistory.current.length >= 2) {
+                const last = positionHistory.current[positionHistory.current.length - 2];
+                const current = positionHistory.current[positionHistory.current.length - 1];
 
-            // Detetar se está em movimento
-            const speed = distance / (timeSinceLastUpdate / 1000); // m/s
-            isMovingRef.current = speed > 0.5; // > 0.5 m/s = movimento
+                const distance = getDistance(last.lat, last.lng, current.lat, current.lng);
+                const timeDiff = (current.timestamp - last.timestamp) / 1000; // segundos
 
-            // REGRAS DE ATUALIZAÇÃO:
+                if (timeDiff > 0) {
+                    const currentSpeed = distance / timeDiff; // m/s
+                    setSpeed(currentSpeed);
 
-            // 1. Movimento rápido (> 2 m/s = 7.2 km/h) - prioridade distância
-            if (speed > 2) {
-                if (distance >= minDistance) {
-                    setPosition(newPos);
-                    lastPositionRef.current = newPos;
-                    lastUpdateRef.current = now;
-                    lastDistanceRef.current = distance;
+                    // Calcular direção do movimento
+                    if (distance > 1) { // Só calcular se movimento significativo
+                        const bearing = getBearing(last.lat, last.lng, current.lat, current.lng);
+                        setHeading(bearing);
+                    }
                 }
-                return;
             }
 
-            // 2. Tempo máximo (não importa se está parado)
-            if (timeSinceLastUpdate >= maxTime) {
-                setPosition(newPos);
-                lastPositionRef.current = newPos;
-                lastUpdateRef.current = now;
-                lastDistanceRef.current = distance;
-                return;
-            }
-
-            // 3. Distância mínima OU tempo mínimo
-            if (distance >= minDistance || timeSinceLastUpdate >= minTime) {
-                setPosition(newPos);
-                lastPositionRef.current = newPos;
-                lastUpdateRef.current = now;
-                lastDistanceRef.current = distance;
-            }
+            setPosition(newPos);
         };
 
         const handleError = (error: GeolocationPositionError) => {
-            console.error('Erro GPS:', error);
+            console.warn('Erro GPS:', error.message);
         };
 
         const options: PositionOptions = {
             enableHighAccuracy: true,
-            maximumAge: 5000,      // Cache de 5s (menor para movimento)
-            timeout: 10000
+            maximumAge: 1000,
+            timeout: 5000
         };
 
-        const watchId = navigator.geolocation.watchPosition(
-            handlePosition,
-            handleError,
-            options
-        );
+        const watchId = navigator.geolocation.watchPosition(handlePosition, handleError, options);
 
         return () => navigator.geolocation.clearWatch(watchId);
-    }, [minDistance, minTime, maxTime]);
+    }, []);
 
-    return position;
+    return { position, speed, heading };
 }
 
 /* =========================
-   OVERLAY DE CARDS COM PROFUNDIDADE
+   SISTEMA DE VISIBILIDADE INTELIGENTE
 ========================= */
-function FloatingCardsOverlay({
-                                  items,
-                                  userPos,
-                                  onAudioPlay,        // ← Adicionar esta prop
-                                  onAudioPause,       // ← Adicionar esta prop
-                                  currentAudioId,     // ← Adicionar esta prop
-                                  isAudioPlaying,     // ← Adicionar esta prop
-                              }: {
+
+function calculateDynamicFOV(pitch: number | null, speed: number): number {
+    // FOV dinâmico baseado na inclinação e velocidade
+    let baseFOV = 60;
+
+    if (pitch !== null) {
+        // Se dispositivo inclinado para baixo (olhando para perto), FOV menor
+        if (pitch > 45) {
+            baseFOV = 45; // Mais focado
+        }
+        // Se dispositivo na horizontal, FOV normal
+        else if (pitch > -45 && pitch < 45) {
+            baseFOV = 60; // Normal
+        }
+        // Se inclinado para cima (olhando para longe), FOV maior
+        else {
+            baseFOV = 75; // Mais amplo
+        }
+    }
+
+    // Ajustar baseado na velocidade
+    if (speed > 2) { // > 7.2 km/h
+        baseFOV = Math.min(baseFOV + 15, 90); // FOV mais amplo em movimento
+    }
+
+    return baseFOV;
+}
+
+function getVisibilityScore(
+    targetLat: number,
+    targetLng: number,
+    userLat: number,
+    userLng: number,
+    deviceHeading: number,
+    devicePitch: number | null,
+    userSpeed: number,
+    userHeading: number | null
+): { isVisible: boolean; score: number; screenPosition: number } {
+
+    // 1. Calcular distância e direção para o alvo
+    const distance = getDistance(userLat, userLng, targetLat, targetLng);
+    const bearingToTarget = getBearing(userLat, userLng, targetLat, targetLng);
+
+    // 2. Calcular FOV dinâmico
+    const fov = calculateDynamicFOV(devicePitch, userSpeed);
+    const halfFOV = fov / 2;
+
+    // 3. Calcular diferença angular (considerando movimento do utilizador)
+    let effectiveDeviceHeading = deviceHeading;
+
+    // Se o utilizador está em movimento, ajustar heading baseado na direção do movimento
+    if (userHeading !== null && userSpeed > 1) {
+        // Misturar heading do dispositivo com heading do movimento
+        effectiveDeviceHeading = (deviceHeading * 0.7 + userHeading * 0.3) % 360;
+    }
+
+    let angularDiff = bearingToTarget - effectiveDeviceHeading;
+
+    // Corrigir transição circular
+    if (angularDiff > 180) angularDiff -= 360;
+    if (angularDiff < -180) angularDiff += 360;
+
+    // 4. Calcular score de visibilidade (0-100)
+    let score = 0;
+
+    // Base: diferença angular (quanto mais central, maior score)
+    const angularScore = Math.max(0, 100 - (Math.abs(angularDiff) * 100 / halfFOV));
+
+    // Distância: pontos mais próximos têm score maior
+    const distanceScore = Math.max(0, 100 - (distance / 100)); // Até 100m = score alto
+
+    // Inclinação: se dispositivo aponta diretamente, score maior
+    let pitchScore = 50; // neutro
+    if (devicePitch !== null) {
+        const absPitch = Math.abs(devicePitch);
+        pitchScore = Math.max(0, 100 - (absPitch * 1.5)); // 0° = 100, 60° = 10
+    }
+
+    // Score final (pesos diferentes)
+    score = (angularScore * 0.5) + (distanceScore * 0.3) + (pitchScore * 0.2);
+
+    // 5. Determinar se está visível
+    const isVisible = Math.abs(angularDiff) <= halfFOV && distance < 2000; // Máximo 2km
+
+    // 6. Calcular posição no ecrã
+    let screenPosition = 50;
+    if (isVisible) {
+        const normalizedDiff = angularDiff / halfFOV;
+        screenPosition = 50 + (normalizedDiff * 50);
+        screenPosition = Math.max(10, Math.min(90, screenPosition));
+    }
+
+    return {
+        isVisible,
+        score: Math.round(score),
+        screenPosition
+    };
+}
+
+/* =========================
+   OVERLAY INTELIGENTE COM FEEDBACK DE MOVIMENTO
+========================= */
+
+function SmartAROverlay({
+                            items,
+                            userPos,
+                            onAudioPlay,
+                            onAudioPause,
+                            currentAudioId,
+                            isAudioPlaying,
+                        }: {
     items: any[];
     userPos: [number, number];
-    onAudioPlay: (itemId: string, fileKey: string) => void;    // ← Tipo da prop
-    onAudioPause: () => void;                                   // ← Tipo da prop
-    currentAudioId: string | null;                              // ← Tipo da prop
-    isAudioPlaying: boolean;                                    // ← Tipo da prop
+    onAudioPlay: (itemId: string, fileKey: string) => void;
+    onAudioPause: () => void;
+    currentAudioId: string | null;
+    isAudioPlaying: boolean;
 }) {
-    const heading = useStableHeading();
-    const audioRef = useRef<HTMLAudioElement>(null);
-    const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
+    const orientation = useSmartOrientation();
+    const gpsData = useAdvancedGPS();
     const [hiddenItems, setHiddenItems] = useState<Set<string>>(new Set());
-    const [prevUserPos, setPrevUserPos] = useState<[number, number] | null>(null);
-    const R2_PUBLIC_URL = "https://pub-72037178c35c4cb1b3448777a2c80f0a.r2.dev";
+    const [calibrationComplete, setCalibrationComplete] = useState(false);
 
-    // Suavizar mudanças de posição
+    // Calibrar por 3 segundos
     useEffect(() => {
-        if (userPos && prevUserPos) {
-            const distance = getDistance(
-                userPos[0], userPos[1],
-                prevUserPos[0], prevUserPos[1]
-            );
-
-            if (distance > 2) {
-                setPrevUserPos(userPos);
+        const forceCalibrationTimer = setTimeout(() => {
+            if (!calibrationComplete && orientation.heading !== null) {
+                console.log('Forçando calibração após timeout');
+                setCalibrationComplete(true);
             }
-        } else if (userPos && !prevUserPos) {
-            setPrevUserPos(userPos);
-        }
-    }, [userPos, prevUserPos]);
+        }, 10000); // 10 segundos máximo
+
+        return () => clearTimeout(forceCalibrationTimer);
+    }, [orientation.heading, calibrationComplete]);
+
 
     const handleAudioPlay = (e: React.MouseEvent, itemId: string, fileKey: string) => {
         e.stopPropagation();
-        // Chamar a função que veio por props do ARPanel
         onAudioPlay(itemId, fileKey);
     };
-    const handleCloseItem = (e: React.MouseEvent, itemId: string) => {
-        e.stopPropagation();
+
+    const handleCloseItem = (itemId: string) => {
         setHiddenItems(prev => new Set(prev).add(itemId));
-
-        if (currentPlayingId === itemId && audioRef.current) {
-            audioRef.current.pause();
-            setCurrentPlayingId(null);
-        }
     };
 
-    const restoreAllItems = () => {
-        setHiddenItems(new Set());
-    };
+    const restoreAllItems = () => setHiddenItems(new Set());
 
-    if (!heading) {
+    if (!calibrationComplete || !orientation.heading) {
+        return (
+            <div className="absolute inset-0 z-[9000] flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
+                <div className="bg-black/70 px-8 py-6 rounded-2xl text-white text-center max-w-sm">
+                    <div className="text-cyan-400 text-4xl mb-4 animate-pulse">🎯</div>
+                    <div className="text-lg font-bold mb-2">Calibrando Sensores</div>
+                    <div className="text-gray-300 text-sm mb-4">
+                        Mantenha o dispositivo estável por 3 segundos
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
+                        <div
+                            className="bg-cyan-500 h-2 rounded-full transition-all duration-1000"
+                            style={{ width: `${calibrationComplete ? 100 : 50}%` }}
+                        ></div>
+                    </div>
+                    <div className="text-xs text-gray-400">
+                        Precisão: {orientation.accuracy}%
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!userPos) {
         return (
             <div className="absolute inset-0 z-[9000] flex items-center justify-center">
                 <div className="bg-black/70 px-6 py-4 rounded-2xl text-white text-center">
-                    <div className="text-cyan-400 text-2xl mb-2">🧭</div>
-                    <div>Gire o dispositivo para calibrar a bússola</div>
-                    <div className="text-sm text-white/50 mt-2">Permita acesso ao sensor de orientação</div>
+                    <div className="text-yellow-400 text-2xl mb-2">📍</div>
+                    <div>GPS em atualização...</div>
+                    <div className="text-sm text-white/50 mt-2">A mover-se? Mantenha o GPS ativo</div>
                 </div>
             </div>
         );
     }
 
+    // CALCULAR VISIBILIDADE INTELIGENTE
     const visibleItems = items
-        .filter(i => i.coordenadas && !hiddenItems.has(i._id))
+        .filter(item => item.coordenadas && !hiddenItems.has(item._id))
         .map(item => {
-            const distance = getDistance(
-                (prevUserPos || userPos)[0],
-                (prevUserPos || userPos)[1],
+            const visibility = getVisibilityScore(
                 item.coordenadas.lat,
-                item.coordenadas.lng
+                item.coordenadas.lng,
+                userPos[0],
+                userPos[1],
+                orientation.heading!,
+                orientation.pitch,
+                gpsData.speed,
+                gpsData.heading
             );
 
-            const bearing = getBearing(
-                (prevUserPos || userPos)[0],
-                (prevUserPos || userPos)[1],
-                item.coordenadas.lat,
-                item.coordenadas.lng
-            );
+            const distance = getDistance(userPos[0], userPos[1], item.coordenadas.lat, item.coordenadas.lng);
 
-            const relative = ((bearing - heading + 540) % 360) - 180;
-
-            return { item, distance, bearing, relative };
+            return {
+                item,
+                distance,
+                visibility,
+                scale: 0.7 + (visibility.score / 100) * 0.5, // Escala baseada no score
+                opacity: Math.max(0.3, visibility.score / 100),
+                priority: distance < 100 ? 1000 : visibility.score // Prioridade: próximos primeiro
+            };
         })
-        .filter(i => Math.abs(i.relative) < 30)
-        .sort((a, b) => a.distance - b.distance)
-        .slice(0, 5)
-        .map((item, index) => ({
-            ...item,
-            zIndex: 9000 + (5 - index),
-            sizeScale: calculateSizeScale(item.distance),
-        }));
-
-    function calculateSizeScale(distance: number): number {
-        const maxDistance = 1000;
-        const minScale = 0.7;
-        const maxScale = 1.2;
-
-        if (distance <= 0) return maxScale;
-        if (distance >= maxDistance) return minScale;
-
-        const normalizedDistance = distance / maxDistance;
-        return maxScale - (normalizedDistance * (maxScale - minScale));
-    }
+        .filter(item => item.visibility.isVisible && item.distance <= 2000)
+        .sort((a, b) => b.priority - a.priority)
+        .slice(0, 4);
 
     const hasHiddenItems = hiddenItems.size > 0;
-    const allItemsHidden = hiddenItems.size === items.filter(i => i.coordenadas).length;
+    const isMoving = gpsData.speed > 1;
 
-    if (allItemsHidden) {
+    if (visibleItems.length === 0) {
         return (
-            <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-black/70 backdrop-blur-sm px-6 py-4 rounded-2xl text-white text-center">
-                    <div className="text-cyan-400 text-2xl mb-2">👁️</div>
-                    <div>Todos os pontos de interesse foram fechados</div>
-                    <button
-                        onClick={restoreAllItems}
-                        className="mt-3 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg text-sm transition-colors"
-                    >
-                        Restaurar todos os pontos
-                    </button>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <div className="bg-black/70 backdrop-blur-sm px-6 py-4 rounded-2xl text-white text-center max-w-sm">
+                    <div className="text-cyan-400 text-2xl mb-2">
+                        {isMoving ? "🚶‍♂️" : "🔍"}
+                    </div>
+                    <div>
+                        {isMoving
+                            ? "Em movimento? Pontos aparecerão à sua frente"
+                            : "Vire o dispositivo para encontrar pontos"
+                        }
+                    </div>
+                    <div className="text-sm text-white/50 mt-2">
+                        Direção: {Math.round(orientation.heading!)}° •
+                        Velocidade: {Math.round(gpsData.speed * 3.6)} km/h
+                    </div>
+                    {hasHiddenItems && (
+                        <button onClick={restoreAllItems} className="mt-3 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                            Restaurar pontos fechados
+                        </button>
+                    )}
                 </div>
             </div>
         );
-    }
-
-    if (visibleItems.length === 0) {
-        return null;
     }
 
     return (
         <div className="absolute inset-0">
-            {/* Elemento de áudio escondido */}
+            {/* Painel de status */}
+            <div className="absolute top-6 left-1/2 transform -translate-x-1/2 z-[9998] flex gap-2">
+                <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-cyan-500/50">
+                    <div className="text-cyan-300 text-xs font-bold flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${isMoving ? 'bg-green-500 animate-pulse' : 'bg-cyan-500'}`}></span>
+                        {Math.round(orientation.heading!)}° • {Math.round(gpsData.speed * 3.6)} km/h
+                    </div>
+                </div>
+                <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-cyan-500/50">
+                    <div className="text-cyan-300 text-xs font-bold">
+                        {visibleItems.length} ponto{visibleItems.length !== 1 ? 's' : ''}
+                    </div>
+                </div>
+            </div>
 
-            {/* Botão flutuante para restaurar itens (se houver fechados) */}
+            {/* Botão restaurar */}
             {hasHiddenItems && (
-                <button
-                    onClick={restoreAllItems}
-                    className="
-                        absolute top-20 right-4 z-[9999]
-                        bg-cyan-600/80 hover:bg-cyan-700/80
-                        text-white text-xs font-bold
-                        px-3 py-1.5 rounded-full
-                        backdrop-blur-sm
-                        border border-cyan-400/50
-                        shadow-lg
-                        transition-all duration-200
-                        flex items-center gap-1
-                    "
-                    title={`Restaurar ${hiddenItems.size} ponto(s) fechado(s)`}
-                >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
-                    </svg>
+                <button onClick={restoreAllItems} className="absolute top-20 right-4 z-[9999] bg-cyan-600/80 hover:bg-cyan-700/80 text-white text-xs font-bold px-3 py-1.5 rounded-full backdrop-blur-sm border border-cyan-400/50 shadow-lg transition-all duration-200 flex items-center gap-1">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
                     {hiddenItems.size}
                 </button>
             )}
 
-            {visibleItems.map(({ item, distance, relative, zIndex, sizeScale }) => {
-                const screenX = 50 + (relative / 30) * 50;
-                const angleScale = Math.max(0.8, 1 - Math.abs(relative) / 40);
-                const finalScale = angleScale * sizeScale;
-                const angleOpacity = Math.max(0.7, 1 - Math.abs(relative) / 60);
-                const distanceOpacity = Math.max(0.5, 1 - (distance / 2000));
-                const opacity = Math.min(angleOpacity, distanceOpacity);
-
-                return (
-                    <div
-                        key={item._id}
-                        style={{
-                            position: 'absolute',
-                            left: `${screenX}%`,
-                            top: '45%',
-                            transform: `translateX(-50%) scale(${finalScale})`,
-                            opacity: opacity,
-                            zIndex: zIndex,
-                            marginTop: `${(distance / 100) * 2}px`,
-                            pointerEvents: 'auto',
-                            ...(item.galeria?.[0]?.url ? {
-                                backgroundImage: `url(${item.galeria[0].url})`,
-                                backgroundSize: 'cover',
-                                backgroundPosition: 'center',
-                            } : {
-                                backgroundColor: 'rgba(0, 0, 0, 0.8)'
-                            })
-                        }}
-                        className="
-                            px-4 py-3 rounded-2xl
-                            min-w-[160px]
-                            text-center
-                            transition-all duration-300
-                            relative overflow-hidden
-                            border border-cyan-400/50
-                            shadow-[0_0_30px_rgba(0,255,255,0.3)]
-                            group
-                        "
-                    >
-                        {/* Botão de fechar */}
-                        <button
-                            onClick={(e) => handleCloseItem(e, item._id)}
-                            className="
-                                absolute top-0 right-0 z-30
-                                bg-red-500
-                                text-white
-                                w-7 h-7 rounded-full
-                                flex items-center justify-center
-                                shadow-lg
-                                border-2 border-white
-                                hover:bg-red-600
-                                active:bg-red-700
-                                active:scale-90
-                                transition-all duration-150
-                                opacity-100 !important
-                            "
-                            title="Fechar este ponto"
-                            aria-label="Fechar"
-                        >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-                            </svg>
+            {/* Cards posicionados inteligentemente */}
+            {visibleItems.map(({ item, distance, visibility, scale, opacity }, index) => (
+                <div
+                    key={item._id}
+                    style={{
+                        left: `${visibility.screenPosition}%`,
+                        top: `${40 + (index * 5)}%`, // Posicionamento vertical escalonado
+                        opacity,
+                        transform: `translateX(-50%) scale(${scale})`,
+                        zIndex: 9000 + (4 - index)
+                    }}
+                    className="absolute transition-all duration-500 ease-out pointer-events-auto"
+                >
+                    <div className="bg-gradient-to-br from-black/95 to-gray-900/95 backdrop-blur-xl rounded-2xl p-4 border-2 border-cyan-500/60 shadow-2xl shadow-cyan-500/40 min-w-[200px] max-w-[240px]">
+                        <button onClick={() => handleCloseItem(item._id)}
+                                className="absolute -top-2 -right-2 z-30 bg-red-600 hover:bg-red-700 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white transition-all duration-150 active:scale-90">
+                            ✕
                         </button>
 
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent"></div>
+                        {/* Indicador de qualidade */}
+                        <div className="absolute -top-1 left-1/2 transform -translate-x-1/2">
+                            <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                visibility.score > 80 ? 'bg-green-500/80 text-white' :
+                                    visibility.score > 50 ? 'bg-yellow-500/80 text-black' :
+                                        'bg-gray-500/80 text-white'
+                            }`}>
+                                {visibility.score}%
+                            </div>
+                        </div>
 
-                        <div className="relative z-10">
-                            <div className="bg-gradient-to-r from-black/80 to-black/60 backdrop-blur-sm px-3 py-1 rounded-t-2xl -mx-4 -mt-3 mb-2">
-                                <div className="text-white text-[10px] font-black uppercase">
-                                    {item.title}
+                        <div className="mb-3 pt-1">
+                            <div className="text-white font-bold text-lg truncate">{item.title}</div>
+                            <div className="text-cyan-300 text-sm flex items-center gap-2 mt-1">
+                                <span className="font-mono font-bold">{Math.round(distance)}m</span>
+                                <span className="text-xs text-gray-400">•</span>
+                                {item.tipo?.titulo && (
+                                    <span className="text-xs text-gray-300 truncate">{item.tipo.titulo}</span>
+                                )}
+                            </div>
+                        </div>
+
+                        {item.galeria?.[0]?.url && (
+                            <div className="mb-3 overflow-hidden rounded-lg border border-cyan-500/30">
+                                <img src={item.galeria[0].url} alt={item.title} className="w-full h-32 object-cover" />
+                            </div>
+                        )}
+
+                        {item.audioNarracao?.fileKey && (
+                            <div className="mb-3">
+                                <button onClick={(e) => handleAudioPlay(e, item._id, item.audioNarracao.fileKey)}
+                                        className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg transition-all ${currentAudioId === item._id && isAudioPlaying ? 'bg-gradient-to-r from-cyan-600 to-blue-600' : 'bg-gradient-to-r from-cyan-700 to-blue-700 hover:from-cyan-600 hover:to-blue-600'}`}>
+                                    {currentAudioId === item._id && isAudioPlaying ? (
+                                        <>
+                                            <div className="w-6 h-6 flex items-center justify-center">
+                                                <div className="w-2 h-4 bg-white mx-0.5 animate-pulse"></div>
+                                                <div className="w-2 h-6 bg-white mx-0.5 animate-pulse" style={{animationDelay: '0.1s'}}></div>
+                                                <div className="w-2 h-3 bg-white mx-0.5 animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                                            </div>
+                                            <span className="text-white text-sm font-bold">A tocar</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-white"><path d="M8 5v14l11-7z"/></svg>
+                                            <span className="text-white text-sm font-bold">Ouvir</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        )}
+
+                        {distance < 50 && (
+                            <div className="mt-2 bg-gradient-to-r from-green-500/40 to-green-700/40 px-3 py-1 rounded-full">
+                                <div className="text-green-300 text-xs font-bold text-center flex items-center justify-center gap-1">
+                                    <span>⭐</span> MUITO PRÓXIMO
                                 </div>
                             </div>
+                        )}
+                    </div>
+                </div>
+            ))}
 
-                            <div className="bg-black/80 backdrop-blur-sm inline-block px-3 py-1 rounded-full mb-1">
-                                <div className="text-cyan-300 font-mono text-xl font-bold">
-                                    {Math.round(distance)}m
-                                </div>
-                            </div>
-
-                            {/* ÁUDIO */}
-                            {item.audioNarracao?.fileKey && (
-                                <div className="mt-2 bg-blue-900/50 rounded-lg p-2 border border-blue-400/50 flex items-center gap-3">
-                                    <button
-                                        onClick={(e) => handleAudioPlay(e, item._id, item.audioNarracao.fileKey)}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-full p-2 shadow-sm flex-shrink-0 transition-colors"
-                                    >
-                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                            {currentPlayingId === item._id ? (
-                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                                            ) : (
-                                                <path d="M8 5v14l11-7z"/>
-                                            )}
-                                        </svg>
-                                    </button>
-                                    <div className="flex flex-col">
-                                        <span className="text-[9px] font-bold text-blue-200 uppercase">
-                                            Narração
-                                        </span>
-                                        <span className="text-[8px] text-blue-300">
-                                            {currentPlayingId === item._id ? 'A tocar...' : 'Ouvir narração'}
-                                        </span>
-                                    </div>
-                                </div>
+            {/* Guia contextual */}
+            <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-[9998]">
+                <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20">
+                    <div className="text-white text-xs text-center">
+                        <div className="flex items-center justify-center gap-2 mb-1">
+                            {isMoving ? (
+                                <>
+                                    <span className="text-green-400">🚶‍♂️ Em movimento</span>
+                                    <span className="text-gray-400">•</span>
+                                    <span className="text-cyan-300">Pontos ajustam-se à sua direção</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-gray-400">↻</span>
+                                    <span className="text-cyan-300">Gire para explorar</span>
+                                    <span className="text-gray-400">↻</span>
+                                </>
                             )}
-
-                            {item.categoria && (
-                                <div className="bg-black/70 backdrop-blur-sm inline-block px-2 py-0.5 rounded-full mt-2">
-                                    <div className="text-white/90 text-[8px]">
-                                        {item.categoria}
-                                    </div>
-                                </div>
-                            )}
-
-                            {distance < 50 && (
-                                <div className="bg-gradient-to-r from-green-500/30 to-green-700/30 backdrop-blur-sm px-2 py-0.5 rounded-full mt-2 inline-block">
-                                    <div className="text-green-300 text-[8px] animate-pulse">
-                                        ⭐ PRÓXIMO
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="mt-2 h-1 w-full bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
+                        </div>
+                        <div className="text-gray-400 text-[10px]">
+                            Score mostra qualidade de visibilidade
                         </div>
                     </div>
-                );
-            })}
+                </div>
+            </div>
         </div>
     );
 }
 
 /* =========================
-   COMPONENTE AR SIMPLIFICADO
+   COMPONENTE AR PRINCIPAL (SIMPLIFICADO)
 ========================= */
+
 export default function ARPanel({
                                     items,
                                     onClose,
@@ -639,38 +688,26 @@ export default function ARPanel({
     onClose: () => void;
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
-    const audioRef = useRef<HTMLAudioElement>(null); // ← Áudio no componente pai
+    const audioRef = useRef<HTMLAudioElement>(null);
     const [currentAudioId, setCurrentAudioId] = useState<string | null>(null);
     const [isAudioPlaying, setIsAudioPlaying] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
     const [arActive, setArActive] = useState(false);
     const [cameraError, setCameraError] = useState<string | null>(null);
-    const [debugInfo, setDebugInfo] = useState<string>('');
 
-    // Usar GPS otimizado (atualiza a cada 10m)
- const userPos = useSmartGPS(5, 15000, 30000);
-    // Debug: monitorizar mudanças
-    useEffect(() => {
-        if (userPos) {
-            setDebugInfo(`GPS: ${userPos[0].toFixed(6)}, ${userPos[1].toFixed(6)}`);
-        }
-    }, [userPos]);
+    const gpsData = useAdvancedGPS();
 
-    // 2. Iniciar câmara
     const startCamera = async () => {
         try {
             setCameraError(null);
 
-            // Limpar vídeo anterior
-            if (videoRef.current && videoRef.current.srcObject) {
+            if (videoRef.current?.srcObject) {
                 const stream = videoRef.current.srcObject as MediaStream;
                 stream.getTracks().forEach(track => track.stop());
             }
 
-            // Configurar constraints - IMPORTANTE para mobile
             const constraints: MediaStreamConstraints = {
                 video: {
-                    facingMode: { ideal: 'environment' }, // Câmara traseira
+                    facingMode: { ideal: 'environment' },
                     width: { ideal: 1280 },
                     height: { ideal: 720 },
                     frameRate: { ideal: 30 }
@@ -678,12 +715,10 @@ export default function ARPanel({
                 audio: false
             };
 
-            // Verificar se é iOS Safari
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
             const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
             if (isIOS && isSafari) {
-                // Safari iOS tem constraints específicas
                 constraints.video = {
                     facingMode: { exact: 'environment' } as any,
                     width: { ideal: window.innerWidth },
@@ -695,57 +730,46 @@ export default function ARPanel({
 
             if (videoRef.current) {
                 videoRef.current.srcObject = stream;
-
-                // Aguardar o vídeo estar pronto
                 videoRef.current.onloadedmetadata = () => {
                     videoRef.current?.play().catch(e => {
-                        console.error('Erro ao reproduzir vídeo:', e);
-                        setCameraError('Não foi possível iniciar a câmara');
+                        console.error('Erro vídeo:', e);
+                        setCameraError('Erro ao iniciar câmera');
                     });
                 };
             }
 
             setArActive(true);
-
-            // Feedback tátil
             if (navigator.vibrate) navigator.vibrate([50]);
 
         } catch (error: any) {
-            console.error('Erro câmara detalhado:', error);
+            let errorMsg = 'Não foi possível aceder à câmera';
 
-            let errorMsg = 'Não foi possível aceder à câmara';
-
-            if (error.name === 'NotAllowedError') {
-                errorMsg = 'Permissão da câmara negada. Ative nas configurações do dispositivo.';
-            } else if (error.name === 'NotFoundError') {
-                errorMsg = 'Câmara traseira não encontrada';
-            } else if (error.name === 'NotReadableError') {
-                errorMsg = 'Câmara já em uso por outra aplicação';
-            } else if (error.name === 'OverconstrainedError') {
-                errorMsg = 'Configuração da câmara não suportada';
-            }
+            if (error.name === 'NotAllowedError') errorMsg = 'Permissão da câmera negada';
+            else if (error.name === 'NotFoundError') errorMsg = 'Câmara traseira não encontrada';
+            else if (error.name === 'NotReadableError') errorMsg = 'Câmara já em uso';
+            else if (error.name === 'OverconstrainedError') errorMsg = 'Configuração não suportada';
 
             setCameraError(errorMsg);
             setArActive(false);
         }
     };
 
-    // 3. Parar câmara
     const stopCamera = () => {
-        if (videoRef.current && videoRef.current.srcObject) {
+        if (videoRef.current?.srcObject) {
             const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => {
-                track.stop();
-            });
+            stream.getTracks().forEach(track => track.stop());
             videoRef.current.srcObject = null;
         }
         setArActive(false);
     };
 
-    // 4. Limpar ao desmontar
     useEffect(() => {
         return () => {
             stopCamera();
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.src = '';
+            }
         };
     }, []);
 
@@ -766,7 +790,6 @@ export default function ARPanel({
 
         const audio = audioRef.current;
 
-        // Se já está a tocar este item, pausar
         if (currentAudioId === itemId && isAudioPlaying) {
             audio.pause();
             setCurrentAudioId(null);
@@ -774,26 +797,22 @@ export default function ARPanel({
             return;
         }
 
-        // Se está a tocar outro item, parar primeiro
         if (currentAudioId && currentAudioId !== itemId) {
             audio.pause();
         }
 
         const audioUrl = `https://pub-72037178c35c4cb1b3448777a2c80f0a.r2.dev/${fileKey}`;
 
-        // Se já tem o mesmo src, só dar play
         if (audio.src !== audioUrl) {
             audio.src = audioUrl;
         }
 
-        audio.play()
-            .then(() => {
-                setCurrentAudioId(itemId);
-                setIsAudioPlaying(true);
-            })
-            .catch(error => {
-                console.error('Erro áudio:', error);
-            });
+        audio.play().then(() => {
+            setCurrentAudioId(itemId);
+            setIsAudioPlaying(true);
+        }).catch(error => {
+            console.error('Erro áudio:', error);
+        });
     }, [currentAudioId, isAudioPlaying]);
 
     const handleAudioPause = useCallback(() => {
@@ -804,7 +823,6 @@ export default function ARPanel({
         }
     }, []);
 
-    // No ARPanel, adicionar useEffect para sincronizar áudio
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
@@ -827,43 +845,40 @@ export default function ARPanel({
         };
     }, []);
 
+    // Filtrar apenas itens com coordenadas
+    const itemsWithCoords = items.filter(item => item.coordenadas);
+
     return (
-        <div
-            ref={containerRef}
-            className="fixed inset-0 z-[5000] bg-black overflow-hidden"
-            style={{
-                // Forçar orientação paisagem no mobile
-                transform: 'rotate(0deg)'
-            }}
-        >
-            {/* Video da câmara em tela cheia */}
+        <div className="fixed inset-0 z-[5000] bg-black overflow-hidden">
+            {/* Video da câmara */}
             <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
                 className="absolute inset-0 w-full h-full object-cover z-0"
-                style={{
-                    transform: 'scaleX(-1)' // Espelhar para parecer normal
-                }}
+                style={{transform: 'scaleX(-1)'}}
             />
 
-            {/* Overlay escuro para melhor contraste */}
+            {/* Overlay de gradiente para melhor contraste */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent z-10"></div>
 
-            {/* Cards flutuantes */}
-            {userPos && arActive && !cameraError && (
-                <FloatingCardsOverlay
-                    items={items}
-                    userPos={userPos}
-                    onAudioPlay={handleAudioPlay}      // ← Passar prop
-                    onAudioPause={handleAudioPause}    // ← Passar prop
-                    currentAudioId={currentAudioId}    // ← Passar prop
-                    isAudioPlaying={isAudioPlaying}    // ← Passar prop
+            {/* Overlay AR inteligente */}
+            {gpsData.position && arActive && !cameraError && (
+                <SmartAROverlay
+                    items={itemsWithCoords}
+                    userPos={gpsData.position}
+                    onAudioPlay={handleAudioPlay}
+                    onAudioPause={handleAudioPause}
+                    currentAudioId={currentAudioId}
+                    isAudioPlaying={isAudioPlaying}
                 />
             )}
+
+            {/* Áudio escondido */}
             <audio ref={audioRef} style={{ display: 'none' }} />
-            {/* ADICIONAR ISTO AQUI: */}
+
+            {/* Barra de controle de áudio */}
             <AudioControlBar
                 item={items.find(i => i._id === currentAudioId)}
                 isPlaying={isAudioPlaying}
@@ -872,41 +887,44 @@ export default function ARPanel({
                     setIsAudioPlaying(false);
                 }}
             />
-            {/* Splash inicial */}
+
+            {/* Tela inicial de ativação */}
             {!arActive && (
                 <div className="absolute inset-0 z-[6000] flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-black to-slate-900 px-8">
                     <div className="text-center mb-10">
                         <div className="text-cyan-400 text-5xl mb-6">🌍</div>
-                        <h2 className="text-white text-3xl font-bold mb-4">
-                            Guia Turístico AR
-                        </h2>
+                        <h2 className="text-white text-3xl font-bold mb-4">Guia Turístico AR Inteligente</h2>
                         <p className="text-white/70 text-sm max-w-md mb-2">
-                            Aponte a câmara para o mundo real e veja pontos de interesse
+                            Sistema adaptativo que se ajusta ao seu movimento
                         </p>
                         <div className="text-white/50 text-xs">
-                            Funciona melhor em <strong>modo paisagem</strong>
+                            Funciona parado, caminhando ou correndo
                         </div>
                     </div>
 
                     {/* Status da localização */}
                     <div className="mb-8 p-5 bg-black/40 rounded-2xl border border-cyan-800/50 w-full max-w-sm">
                         <div className="flex items-center justify-between mb-3">
-                            <div className="text-white text-sm">📍 Localização</div>
-                            <div className={`w-3 h-3 rounded-full ${userPos ? 'bg-green-500 animate-pulse' : 'bg-yellow-500 animate-pulse'}`}></div>
+                            <div className="text-white text-sm">📍 GPS Inteligente</div>
+                            <div className={`w-3 h-3 rounded-full ${gpsData.position ? 'bg-green-500 animate-pulse' : 'bg-yellow-500 animate-pulse'}`}></div>
                         </div>
-                        {userPos ? (
+                        {gpsData.position ? (
                             <div className="text-cyan-400 font-mono text-sm">
-                                Lat: {userPos[0].toFixed(6)}
+                                {gpsData.position[0].toFixed(6)}, {gpsData.position[1].toFixed(6)}
                                 <br />
-                                Lon: {userPos[1].toFixed(6)}
+                                <span className="text-green-400 text-xs">
+                                    ✓ GPS ativo • {Math.round(gpsData.speed * 3.6)} km/h
+                                </span>
                                 <br />
-                                <span className="text-green-400 text-xs">✓ GPS estável (atualiza a cada 10m)</span>
+                                <span className="text-xs text-gray-300">
+                                    {itemsWithCoords.length} pontos com coordenadas
+                                </span>
                             </div>
                         ) : (
                             <div className="text-yellow-400 text-sm">
-                                A obter localização GPS...
+                                A calibrar sensores de movimento...
                                 <br />
-                                <span className="text-xs">Precisão: 10 metros</span>
+                                <span className="text-xs">Precisão: 3 metros</span>
                             </div>
                         )}
                     </div>
@@ -924,9 +942,10 @@ export default function ARPanel({
                             mb-6
                         `}
                     >
-                        {cameraError ? '❌ ERRO CÂMARA' : '🚀 ATIVAR REALIDADE AUMENTADA'}
+                        {cameraError ? '❌ ERRO CÂMARA' : '🚀 ATIVAR AR INTELIGENTE'}
                     </button>
 
+                    {/* Mensagem de erro */}
                     {cameraError && (
                         <div className="bg-red-900/50 border border-red-700 rounded-xl p-4 max-w-sm mb-6">
                             <div className="text-red-300 text-sm font-bold mb-1">Erro:</div>
@@ -940,28 +959,23 @@ export default function ARPanel({
                         </div>
                     )}
 
-                    {/* Instruções */}
-                    <div className="mt-4 text-white/40 text-xs text-center max-w-sm">
-                        <div className="grid grid-cols-2 gap-4 mb-4">
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
-                                <span>Permita câmara</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
-                                <span>Use GPS</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
-                                <span>Boa iluminação</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
-                                <span>Modo paisagem</span>
-                            </div>
+                    {/* Características do sistema */}
+                    <div className="mt-6 grid grid-cols-2 gap-3 max-w-sm">
+                        <div className="bg-black/30 p-3 rounded-xl">
+                            <div className="text-cyan-400 text-xs font-bold mb-1">🎯 Detecção Precisa</div>
+                            <div className="text-white/60 text-[10px]">Ajusta-se ao seu movimento</div>
                         </div>
-                        <div className="text-[10px]">
-                            Compatível com iOS 13+ e Android 8+
+                        <div className="bg-black/30 p-3 rounded-xl">
+                            <div className="text-cyan-400 text-xs font-bold mb-1">📊 Score Inteligente</div>
+                            <div className="text-white/60 text-[10px]">0-100% qualidade de visão</div>
+                        </div>
+                        <div className="bg-black/30 p-3 rounded-xl">
+                            <div className="text-cyan-400 text-xs font-bold mb-1">🚶‍♂️ Modo Movimento</div>
+                            <div className="text-white/60 text-[10px]">Detecta caminhada/corrida</div>
+                        </div>
+                        <div className="bg-black/30 p-3 rounded-xl">
+                            <div className="text-cyan-400 text-xs font-bold mb-1">🧭 Calibração Auto</div>
+                            <div className="text-white/60 text-[10px]">3s para estabilizar</div>
                         </div>
                     </div>
                 </div>
@@ -1001,7 +1015,7 @@ export default function ARPanel({
                     animate-pulse
                 ">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    AR ATIVO • {items.filter(i => i.coordenadas).length} LOCAIS
+                    AR INTELIGENTE ATIVO • {itemsWithCoords.length} LOCAIS
                 </div>
             )}
 
@@ -1009,14 +1023,16 @@ export default function ARPanel({
             {process.env.NODE_ENV === 'development' && (
                 <div className="absolute bottom-4 left-4 z-[7000] bg-black/80 text-white text-xs p-3 rounded-lg font-mono">
                     <div>AR: {arActive ? 'ON' : 'OFF'}</div>
-                    <div>GPS: {userPos ? 'OK' : '...'}</div>
-                    <div>Erro: {cameraError || 'none'}</div>
-                    <div>Items: {items.length}</div>
-                    <div className="text-[10px] mt-1">{debugInfo}</div>
+                    <div>GPS: {gpsData.position ? 'OK' : '...'}</div>
+                    <div>Vel: {Math.round(gpsData.speed * 3.6)} km/h</div>
+                    <div>Items: {itemsWithCoords.length}/{items.length}</div>
+                    <div className="text-[10px] mt-1 text-cyan-300">
+                        Sistema de detecção de movimento ativo
+                    </div>
                 </div>
             )}
 
-            {/* Aviso de orientação */}
+            {/* Aviso de orientação (modo retrato) */}
             {arActive && window.innerHeight > window.innerWidth && (
                 <div className="
                     absolute inset-0 z-[8000]
@@ -1029,10 +1045,10 @@ export default function ARPanel({
                         Gire para Modo Paisagem
                     </h3>
                     <p className="text-white/70 mb-6 max-w-md">
-                        Para melhor experiência, vire o dispositivo horizontalmente
+                        Para melhor experiência com o sistema AR inteligente
                     </p>
                     <div className="text-white/50 text-sm">
-                        A câmara continuará ativa
+                        O sistema continuará a funcionar em modo retrato
                     </div>
                 </div>
             )}
