@@ -68,3 +68,40 @@ body {
   0% { transform: scale(0.1); opacity: 0.8; }
   100% { transform: scale(1.5); opacity: 0; }
 }
+
+/* Adicionar ao CSS global */
+.ar-card {
+  will-change: transform, opacity; /* Otimização para GPU */
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* Transição mais natural */
+.smooth-transition {
+  transition:
+          left 0.6s ease-out,
+          transform 0.4s ease-out,
+          opacity 0.3s ease-out;
+}
+
+/* Para dispositivos lentos, reduzir animações */
+@media (prefers-reduced-motion: reduce) {
+  .smooth-transition {
+    transition: none;
+  }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.3s ease-out;
+}
