@@ -96,9 +96,8 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
     const [userPos, setUserPos] = useState<[number, number] | null>(null);
     const [isTracking, setIsTracking] = useState(true);
     const [activePopupId, setActivePopupId] = useState<string | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
     const [activeARItem, setActiveARItem] = useState<HeritageItem | null>(null);
-
+    const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [audioEnabled, setAudioEnabled] = useState(false);
     const markersRef = useRef<{ [key: string]: L.Marker }>({});
