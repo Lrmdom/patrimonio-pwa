@@ -203,9 +203,7 @@ export default function ARPanel({
                 playsInline
                 muted
                 className="absolute inset-0 w-full h-full object-cover z-0"
-                style={{
-                    transform: 'scaleX(-1)'
-                }}
+
             />
 
             <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent z-10"></div>

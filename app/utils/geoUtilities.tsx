@@ -35,8 +35,8 @@ export function getBearing(lat1: number, lon1: number, lat2: number, lon2: numbe
 ========================= */
 export function useSmartGPS(
     minDistance: number = 10,
-    minTime: number = 10000,
-    maxTime: number = 30000
+    minTime: number = 3000,
+    maxTime: number = 15000
 ) {
     const [position, setPosition] = useState<[number, number] | null>(null);
     const lastPositionRef = useRef<[number, number] | null>(null);
@@ -111,7 +111,7 @@ export function useSmartGPS(
 
         const options: PositionOptions = {
             enableHighAccuracy: true,
-            maximumAge: 5000,
+            maximumAge: 1000, // Alterado de 5000 para 0 para forçar dados frescos
             timeout: 10000
         };
 

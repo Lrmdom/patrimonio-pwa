@@ -1,101 +1,77 @@
 /* =========================
-   BÚSSOLA OTIMIZADA (com filtro Kalman simples)
+   BÚSSOLA E INCLINAÇÃO OTIMIZADA
 ========================= */
 import {useEffect, useRef, useState} from "react";
 
+// utils/compassUtilities.tsx
+
 export function useStableHeading(
-    smoothingFactor: number = 0.15,
+    smoothingFactor: number = 0.5, // Reduzido (era 0.45) para filtrar mais o tremor
     minUpdateInterval: number = 100
 ) {
-    const [heading, setHeading] = useState<number | null>(null);
+    const [orientation, setOrientation] = useState({ heading: null, pitch: null });
+    const lastUpdateRef = useRef(0);
     const filteredHeadingRef = useRef<number | null>(null);
-    const lastUpdateRef = useRef<number>(0);
-    const isCalibratingRef = useRef<boolean>(true);
-    const calibrationSamplesRef = useRef<number[]>([]);
 
     useEffect(() => {
-        const requestPermission = async () => {
-            if (typeof (DeviceOrientationEvent as any).requestPermission === 'function') {
-                try {
-                    const permission = await (DeviceOrientationEvent as any).requestPermission();
-                    if (permission === 'granted') {
-                        startListening();
-                    }
-                } catch (error) {
-                    console.error('Permissão negada para orientação:', error);
-                }
-            } else {
-                startListening();
+        const handler = (e: DeviceOrientationEvent) => {
+            const now = Date.now();
+            if (now - lastUpdateRef.current < minUpdateInterval) return;
+
+            let screenAngle = window.screen?.orientation?.angle || 0;
+
+            let heading = 0;
+            const ev = e as any;
+
+            // 1. PRIORIDADE: iOS ou browsers que suportam o Norte Magnético direto
+            if (ev.webkitCompassHeading !== undefined && ev.webkitCompassHeading !== null) {
+                heading = ev.webkitCompassHeading;
             }
+            // 2. ANDROID: Usar alpha absoluto se disponível
+            else if (e.alpha !== null) {
+                // No Android, o alpha aumenta no sentido anti-horário.
+                // Para bússola, precisamos que aumente no sentido horário.
+                heading = (360 - e.alpha);
+            } else {
+                return;
+            }
+
+            // 3. COMPENSAR O HEADING COM A ROTAÇÃO DO ECRÃ
+            // Se o ecrã rodar 90deg, o heading tem de rodar proporcionalmente
+            let rawHeading = (heading + screenAngle + 360) % 360;
+
+            // 4. DETERMINAR O PITCH (Eixo de inclinação vertical)
+            // Em modo paisagem (90 ou 270), usamos o gamma. Em retrato (0), o beta.
+            let pitchValue = Math.abs(screenAngle) === 90 ? e.gamma : e.beta;
+
+            if (rawHeading === null || pitchValue === null) return;
+
+            // FILTRO DE SUAVIZAÇÃO (A sua lógica original)
+            if (filteredHeadingRef.current === null) {
+                filteredHeadingRef.current = rawHeading;
+            } else {
+                let diff = rawHeading - filteredHeadingRef.current;
+                if (diff > 180) diff -= 360;
+                if (diff < -180) diff += 360;
+                filteredHeadingRef.current = (filteredHeadingRef.current + diff * smoothingFactor) % 360;
+            }
+
+            setOrientation({
+                heading: (filteredHeadingRef.current + 360) % 360,
+                pitch: Math.abs(screenAngle) === 90 ? e.gamma : e.beta
+            });
+            lastUpdateRef.current = now;
         };
 
-        const startListening = () => {
-            let lastRawHeading: number | null = null;
-
-            const handler = (e: DeviceOrientationEvent) => {
-                if (e.alpha === null || e.alpha === undefined) return;
-
-                const now = Date.now();
-                const rawHeading = e.alpha;
-
-                if (now - lastUpdateRef.current < minUpdateInterval) return;
-
-                if (isCalibratingRef.current) {
-                    calibrationSamplesRef.current.push(rawHeading);
-
-                    if (calibrationSamplesRef.current.length > 20) {
-                        isCalibratingRef.current = false;
-                        console.log('Bússola calibrada');
-                    }
-                    return;
-                }
-
-                if (filteredHeadingRef.current === null) {
-                    filteredHeadingRef.current = rawHeading;
-                } else {
-                    const current = filteredHeadingRef.current;
-                    // --- LÓGICA DE DIFERENÇA (DIFF) AQUI ---
-                    let diff = rawHeading - current; // Cálculo local da diferença
-
-                    if (diff > 180) diff -= 360;
-                    if (diff < -180) diff += 360;
-
-                    filteredHeadingRef.current = (current + diff * smoothingFactor) % 360;
-                    if (filteredHeadingRef.current < 0) filteredHeadingRef.current += 360;
-                }
-
-                if (lastRawHeading !== null) {
-                    let smallDiff = Math.abs(rawHeading - lastRawHeading);
-                    if (smallDiff > 180) smallDiff = 360 - smallDiff;
-
-                    // A variável `diff` usada aqui é a calculada nas linhas acima
-                    if (smallDiff < 0.5 && Math.abs(diff || 0) < 0.5) {
-                        return;
-                    }
-                }
-
-                lastRawHeading = rawHeading;
-                setHeading(filteredHeadingRef.current);
-                lastUpdateRef.current = now;
-            };
-
-            window.addEventListener('deviceorientation', handler, true);
-
-            return () => {
-                window.removeEventListener('deviceorientation', handler);
-            };
-        };
-
-        requestPermission();
-
-        const calibrationTimeout = setTimeout(() => {
-            isCalibratingRef.current = false;
-        }, 5000);
+        // Tentar escutar o evento ABSOLUTO (essencial para Android)
+        window.addEventListener('deviceorientationabsolute', handler, true);
+        // Fallback para o normal
+        window.addEventListener('deviceorientation', handler, true);
 
         return () => {
-            clearTimeout(calibrationTimeout);
+            window.removeEventListener('deviceorientationabsolute', handler);
+            window.removeEventListener('deviceorientation', handler);
         };
     }, [smoothingFactor, minUpdateInterval]);
-
-    return heading;
+    return orientation;
 }

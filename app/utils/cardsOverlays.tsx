@@ -3,13 +3,13 @@ import {useStableHeading} from "~/utils/compassUtilities";
 import {getBearing, getDistance} from "~/utils/geoUtilities";
 
 export function FloatingCardsOverlay({
-                                  items,
-                                  userPos,
-                                  onAudioPlay,
-                                  onAudioPause,
-                                  currentAudioId,
-                                  isAudioPlaying,
-                              }: {
+                                         items,
+                                         userPos,
+                                         onAudioPlay,
+                                         onAudioPause,
+                                         currentAudioId,
+                                         isAudioPlaying,
+                                     }: {
     items: any[];
     userPos: [number, number];
     onAudioPlay: (itemId: string, fileKey: string) => void;
@@ -17,12 +17,15 @@ export function FloatingCardsOverlay({
     currentAudioId: string | null;
     isAudioPlaying: boolean;
 }) {
-    const heading = useStableHeading();
+    // 1. O hook agora retorna um objeto { heading, pitch }
+    const orientation = useStableHeading();
+    const heading = orientation?.heading;
+    const pitch = orientation?.pitch;
+
     const audioRef = useRef<HTMLAudioElement>(null);
     const [currentPlayingId, setCurrentPlayingId] = useState<string | null>(null);
     const [hiddenItems, setHiddenItems] = useState<Set<string>>(new Set());
     const [prevUserPos, setPrevUserPos] = useState<[number, number] | null>(null);
-    const R2_PUBLIC_URL = "https://pub-72037178c35c4cb1b3448777a2c80f0a.r2.dev";
 
     useEffect(() => {
         if (userPos && prevUserPos) {
@@ -63,14 +66,12 @@ export function FloatingCardsOverlay({
             <div className="absolute inset-0 z-[9000] flex items-center justify-center">
                 <div className="bg-black/70 px-6 py-4 rounded-2xl text-white text-center">
                     <div className="text-cyan-400 text-2xl mb-2">🧭</div>
-                    <div>Gire o dispositivo para calibrar a bússola</div>
-                    <div className="text-sm text-white/50 mt-2">Permita acesso ao sensor de orientação</div>
+                    <div>A aguardar sensores...</div>
                 </div>
             </div>
         );
     }
 
-    // CALCULAR QUAIS ITENS ESTÃO NO CAMPO DE VISÃO DA CÂMERA
     const visibleItems = items
         .filter(i => i.coordenadas && !hiddenItems.has(i._id))
         .map(item => {
@@ -88,31 +89,25 @@ export function FloatingCardsOverlay({
                 item.coordenadas.lng
             );
 
-            // Calcular diferença entre o bearing do item e o heading atual
-            const relative = ((bearing - heading + 540) % 360) - 180;
+            let relative =  bearing - heading  ;
+            if (relative > 180) relative -= 360;
+            if (relative < -180) relative += 360;
 
             return {
                 item,
                 distance,
-                bearing,
                 relative,
-                // Item está visível se estiver dentro de 60 graus do centro (campo de visão)
-                isVisible: Math.abs(relative) <= 60
+                // Reduzimos o FOV para 40 para o card sair mais rápido da tela ao girar
+                isVisible: Math.abs(relative) <= 30
             };
         })
-        .filter(i => i.isVisible) // FILTRAR APENAS OS QUE ESTÃO NO CAMPO DE VISÃO
-        .sort((a, b) => a.distance - b.distance)
-        .slice(0, 5)
-        .map((item, index) => ({
-            ...item,
-            zIndex: 9000 + (5 - index),
-            sizeScale: calculateSizeScale(item.distance),
-        }));
+        .filter(i => i.isVisible && i.distance > 15) // NÃO MOSTRAR pontos a menos de 15 metros em AR
+        .sort((a, b) => a.distance - b.distance);
 
     function calculateSizeScale(distance: number): number {
-        const maxDistance = 1000;
-        const minScale = 0.7;
-        const maxScale = 1.2;
+        const maxDistance = 50;
+        const minScale = 0.5;
+        const maxScale = 1.00;
 
         if (distance <= 0) return maxScale;
         if (distance >= maxDistance) return minScale;
@@ -171,50 +166,48 @@ export function FloatingCardsOverlay({
                 </button>
             )}
 
-            {visibleItems.map(({ item, distance, relative, zIndex, sizeScale }) => {
-                // Calcular posição na tela baseada no ângulo relativo
-                // -30 a +30 graus mapeia para 25% a 75% da tela
-                const screenX = 50 + (relative / 60) * 50;
+            {visibleItems.map(({ item, distance, relative }) => {
 
-                // Ajustar escala baseada no ângulo (itens mais próximos do centro são maiores)
-                const angleScale = Math.max(0.8, 1 - Math.abs(relative) / 80);
-                const finalScale = angleScale * sizeScale;
+                // --- CÁLCULO HORIZONTAL ---
+                // Se o telefone gira 30 graus, o card deve estar na borda (100% ou 0%)
+                const hFOV = 60;
+                const screenX = 50 + (relative / (hFOV / 2)) * 50;
 
-                // Ajustar opacidade baseada no ângulo e distância
-                const angleOpacity = Math.max(0.7, 1 - Math.abs(relative) / 80);
-                const distanceOpacity = Math.max(0.5, 1 - (distance / 2000));
-                const opacity = Math.min(angleOpacity, distanceOpacity);
 
+                const horizonBase = 40; // Subimos um pouco a linha do horizonte base
+// No modo paisagem, o pitch (beta) costuma andar perto de 0 quando vertical
+// ou 90 dependendo da orientação. Vamos normalizar:
+                // Em vez de usar apenas o pitch puro, aplicamos uma zona morta ou suavização
+                const currentPitch = pitch || 0;
+// Limitamos a influência do pitch para que os cartões fiquem mais "presos" ao horizonte
+                let calculatedY = 50 + (currentPitch * 0.8); // Reduzido de 1.5 para 0.8
+                const screenY = Math.max(20, Math.min(80, calculatedY));
+
+
+                const sizeScale = calculateSizeScale(distance);
+                const opacity = Math.max(0.4, 1 - (distance / 1500));
+                const arrowRotation = relative;
                 return (
                     <div
                         key={item._id}
                         style={{
                             position: 'absolute',
                             left: `${screenX}%`,
-                            top: '45%',
-                            transform: `translateX(-50%) scale(${finalScale})`,
+                            top: `${screenY}%`,
+                            transform: `translate(-50%, -50%) scale(${sizeScale})`,
+                            transition: 'left 0.2s ease-out, top 0.2s ease-out',
                             opacity: opacity,
-                            zIndex: zIndex,
-                            marginTop: `${(distance / 100) * 2}px`,
+                            zIndex: 9000,
                             pointerEvents: 'auto',
-                            ...(item.galeria?.[0]?.url ? {
+                            // Se usares imagem de fundo, garante que o card tem tamanho
+                            ...(item.galeria?.[0]?.url && {
                                 backgroundImage: `url(${item.galeria[0].url})`,
                                 backgroundSize: 'cover',
                                 backgroundPosition: 'center',
-                            } : {
-                                backgroundColor: 'rgba(0, 0, 0, 0.8)'
                             })
                         }}
-                        className="
-                            px-4 py-3 rounded-2xl
-                            min-w-[160px]
-                            text-center
-                            transition-all duration-300
-                            relative overflow-hidden
-                            border border-cyan-400/50
-                            shadow-[0_0_30px_rgba(0,255,255,0.3)]
-                            group
-                        "
+                        // Remove o transition temporariamente para veres onde eles estão sem lag
+                        className="px-4 py-3 rounded-2xl min-w-[180px] min-h-[120px] text-center shadow-2xl flex flex-col justify-between"
                     >
                         {/* Botão de fechar */}
                         <button
@@ -297,8 +290,6 @@ export function FloatingCardsOverlay({
                                     </div>
                                 </div>
                             )}
-
-                            <div className="mt-2 h-1 w-full bg-gradient-to-r from-transparent via-cyan-500/50 to-transparent"></div>
                         </div>
                     </div>
                 );
