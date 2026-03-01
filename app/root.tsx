@@ -156,9 +156,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="p-4 border-b bg-parchment parchment-texture flex items-center justify-between sticky top-0 z-50 organic-shadow">
           <div>
             <IosPwaInstallBanner />
-            <h1 className="text-sm historical-heading uppercase tracking-widest">
-              {t('header.settings')}
-            </h1>
+            
           </div>
           <div className="flex items-center gap-4">
             <LanguageSwitcher />

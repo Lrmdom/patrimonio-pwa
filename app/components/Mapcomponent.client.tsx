@@ -99,6 +99,22 @@ interface MapProps {
     defaultLayer?: 'osm' | 'satellite' | 'terrain';
 }
 
+// Componente para controlar popups no nível do mapa
+const PopupController: React.FC<{ activePopupId: string | null; setActivePopupId: (id: string | null) => void }> = ({ activePopupId, setActivePopupId }) => {
+    const map = useMap();
+    
+    useEffect(() => {
+        // Quando o activePopupId muda, fechar todos os popups
+        map.eachLayer((layer: any) => {
+            if (layer._popup && layer._popup.isOpen()) {
+                layer._popup.close();
+            }
+        });
+    }, [activePopupId, map]);
+    
+    return null;
+};
+
 // Componente para recentrar automaticamente
 function RecenterAutomatically({ coords }: { coords: L.LatLngExpression }) {
     const map = useMap();
@@ -143,6 +159,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     
     // Refs
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const markersRef = useRef<{ [key: string]: any }>({});
 
     // Handlers defined before hooks that use them
     const handleAudioPause = useCallback(() => {
@@ -201,6 +218,12 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         });
     }, []);
 
+    // Função para controlar popup único
+    const handlePopupOpen = useCallback((markerId: string) => {
+        // Simplesmente definir qual popup deve estar aberto
+        setActivePopupId(markerId);
+    }, []);
+
     // Hooks customizados
     const geolocation = useGeolocation();
     const proximityDetection = useProximityDetection(
@@ -257,10 +280,6 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         setActiveARItem(null);
     }, []);
 
-    const handlePopupOpen = useCallback((id: string) => {
-        setActivePopupId(id);
-    }, []);
-
     const handleMarkerClick = useCallback((item: HeritageItem) => {
         console.log('Marker clicked:', item.title);
         // Lógica adicional para clique no marker
@@ -296,31 +315,44 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             {/* O mapa é envolvido numa div que apenas ESCONDE (hidden) em vez de ser removida do DOM */}
             <div className={`w-full h-full flex flex-col ${activeARItem ? 'hidden' : 'block'}`}>
                 {/* Header com controls */}
-                <div className="p-3 bg-white border-b flex justify-between items-center z-[1000]">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-blue-600 uppercase">GPS Ativo</span>
-                        <span className="text-xs text-gray-400">{geolocation.position ? "Sinal Estável" : "Localizando..."}</span>
+                <div className="p-3 bg-white border-b flex justify-end items-center z-[1]">
+                    <div className="flex items-center gap-4">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] font-black text-blue-600 uppercase">GPS Ativo</span>
+                            <span className="text-xs text-gray-400">{geolocation.position ? "Sinal Estável" : "Localizando..."}</span>
+                        </div>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setIsTracking(!isTracking); }}
+                            className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all ${isTracking ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}
+                        >
+                            {isTracking ? 'Seguir' : 'Livre'}
+                        </button>
                     </div>
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setIsTracking(!isTracking); }}
-                        className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all ${isTracking ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}
-                    >
-                        {isTracking ? 'Seguir' : 'Livre'}
-                    </button>
                 </div>
 
                 <div className="relative flex-grow h-[70vh]">
                     <MapContainer 
                         center={center} 
                         zoom={zoom} 
-                        style={{ height: '100%', width: '100%' }}
+                        maxZoom={MAP_CONFIG.ZOOM.MAX}
+                        style={{ height: '100%', width: '100%', zIndex: 1 }}
+                        bounds={MAP_CONFIG.BOUNDS.SOUTHWEST && MAP_CONFIG.BOUNDS.NORTHEAST ? [
+                            MAP_CONFIG.BOUNDS.SOUTHWEST, 
+                            MAP_CONFIG.BOUNDS.NORTHEAST
+                        ] : undefined}
                     >
-                        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                        
-                        {/* Auto-recenter se tracking ativo */}
                         {geolocation.position && isTracking && (
                             <RecenterAutomatically coords={geolocation.position} />
                         )}
+
+                        {/* Tile Layer */}
+                        <TileLayer
+                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        />
+
+                        {/* Controlador de popups */}
+                        <PopupController activePopupId={activePopupId} setActivePopupId={setActivePopupId} />
 
                         {/* Marker da posição do utilizador */}
                         {geolocation.position && (
@@ -393,6 +425,16 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                 key={item._id}
                                 position={[item.coordenadas.lat, item.coordenadas.lng]}
                                 icon={createCustomIcon(item.tipo?.titulo || 'Arquitetura Civil')}
+                                ref={(ref) => {
+                                    if (ref) {
+                                        markersRef.current[item._id] = ref as any;
+                                    }
+                                }}
+                                eventHandlers={{
+                                    click: () => {
+                                        handlePopupOpen(item._id);
+                                    }
+                                }}
                             >
                                 <Popup autoClose={false} closeOnClick={false}>
                                     <div className="p-0 w-[220px] flex flex-col overflow-hidden historical-card organic-shadow">
@@ -404,7 +446,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                             <div className="w-full h-2 bg-antique-gold"></div>
                                         )}
 
-                                        <div className="p-3 flex flex-col gap-2">
+                                        <div className="p-2 flex flex-col gap-1">
                                             <div>
                                                 <h4 className="historical-heading text-sm leading-tight">{item.title}</h4>
                                                 <div className="flex flex-wrap gap-1 mt-1">
@@ -416,7 +458,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                             </div>
 
                                             {item.audioNarracao?.fileKey && (
-                                                <div className="bg-olive/10 rounded-lg p-2 border border-olive/20 flex items-center gap-3">
+                                                <div className="bg-olive/10 rounded-lg p-1.5 border border-olive/20 flex items-center gap-2">
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
@@ -433,7 +475,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                         className="bg-antique-gold text-deep-brown rounded-full p-2 shadow-sm flex-shrink-0 organic-border"
                                                     >
                                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                                            {isPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
+                                                            {isAudioPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
                                                                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
                                                             ) : (
                                                                 <path d="M8 5v14l11-7z"/>
@@ -447,7 +489,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                 </div>
                                             )}
 
-                                            <div className="mt-1 pt-2 border-t border-deep-brown/20 flex justify-between items-center">
+                                            <div className="mt-1 pt-1.5 border-t border-deep-brown/20 flex justify-between items-center">
                                                 <Link to={`/heritages/${item._id}`} className="text-antique-gold font-black text-[9px] uppercase hover:text-antique-gold/80">Detalhes →</Link>
                                                 <span className="text-[9px] font-medium historical-text">
                                                     {geolocation.position ? `${Math.round(getDistance(geolocation.position[0], geolocation.position[1], item.coordenadas!.lat, item.coordenadas!.lng))}m` : '--'}
@@ -474,6 +516,11 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                     key={item._id}
                                     position={[item.coordenadas.lat, item.coordenadas.lng]}
                                     icon={createCustomIcon(item.tipo?.titulo || 'Arquitetura Civil')}
+                                    eventHandlers={{
+                                        click: () => {
+                                            handlePopupOpen(item._id);
+                                        }
+                                    }}
                                 >
                                     <Popup autoClose={false} closeOnClick={false}>
                                         <div className="p-0 w-[220px] flex flex-col overflow-hidden historical-card organic-shadow">
@@ -485,7 +532,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                 <div className="w-full h-2 bg-antique-gold"></div>
                                             )}
 
-                                            <div className="p-3 flex flex-col gap-2">
+                                            <div className="p-2 flex flex-col gap-1">
                                                 <div>
                                                     <h4 className="historical-heading text-sm leading-tight">{item.title}</h4>
                                                     <div className="flex flex-wrap gap-1 mt-1">
@@ -497,13 +544,13 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                 </div>
 
                                                 {item.audioNarracao?.fileKey && (
-                                                    <div className="bg-olive/10 rounded-lg p-2 border border-olive/20 flex items-center gap-3">
+                                                    <div className="bg-olive/10 rounded-lg p-1.5 border border-olive/20 flex items-center gap-2">
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 if (audioRef.current) {
                                                                     const isThisActive = audioRef.current.src.includes(item.audioNarracao!.fileKey);
-                                                                    if (isThisActive && isPlaying) {
+                                                                    if (isThisActive && isAudioPlaying) {
                                                                         audioRef.current.pause();
                                                                     } else {
                                                                         audioRef.current.src = `${APP_CONFIG.R2_URL}/${item.audioNarracao!.fileKey}`;
@@ -514,7 +561,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                             className="bg-antique-gold text-deep-brown rounded-full p-2 shadow-sm flex-shrink-0 organic-border"
                                                         >
                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                                                {isPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
+                                                                {isAudioPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
                                                                     <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
                                                                 ) : (
                                                                     <path d="M8 5v14l11-7z"/>
@@ -528,7 +575,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                     </div>
                                                 )}
 
-                                                <div className="mt-1 pt-2 border-t border-deep-brown/20 flex justify-between items-center">
+                                                <div className="mt-1 pt-1.5 border-t border-deep-brown/20 flex justify-between items-center">
                                                     <Link to={`/heritages/${item._id}`} className="text-antique-gold font-black text-[9px] uppercase hover:text-antique-gold/80">Detalhes →</Link>
                                                     <span className="text-[9px] font-medium historical-text">
                                                         {geolocation.position ? `${Math.round(getDistance(geolocation.position[0], geolocation.position[1], item.coordenadas!.lat, item.coordenadas!.lng))}m` : '--'}
