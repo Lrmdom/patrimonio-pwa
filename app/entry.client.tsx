@@ -3,6 +3,7 @@ import { hydrateRoot } from "react-dom/client";
 import { HydratedRouter } from "react-router/dom";
 // @ts-ignore
 import { registerSW } from 'virtual:pwa-register';
+import './i18n'; // Initialize i18n
 
 startTransition(() => {
   hydrateRoot(

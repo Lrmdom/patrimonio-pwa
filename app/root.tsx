@@ -7,6 +7,8 @@ import {
   useRouteLoaderData,
   isRouteErrorResponse,
 } from "react-router";
+import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import type { Route } from "react-router";
 import stylesheet from "~/app.css?url";
 import IosPwaInstallBanner from "./components/IosPwaInstallBanner";
@@ -15,6 +17,8 @@ import { SanityVisualEditing } from "~/components/SanityVisualEditing";
 import { AuthProvider } from "~/auth/context/AuthContext";
 import { AuthWidget } from "~/auth/AuthWidget";
 import { getGCSStorageClient } from "~/utils/gcs.server";
+import i18n from "~/i18n";
+import { LanguageSwitcher } from "~/components/LanguageSwitcher";
 
 /**
  * Detecta a linguagem preferencial do utilizador através dos headers do browser.
@@ -107,7 +111,7 @@ export const links: any = () => [
   },
   {
     rel: "stylesheet",
-    href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
+    href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&display=swap",
   },
   { rel: "manifest", href: "/manifest.webmanifest" },
   { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
@@ -119,9 +123,14 @@ export const links: any = () => [
  */
 export function Layout({ children }: { children: React.ReactNode }) {
   const data = useRouteLoaderData("root") as any;
+  const { t } = useTranslation();
 
   // Fallback seguro caso o loader ainda não tenha corrido ou tenha falhado
   const locale = data?.locale || "pt";
+
+  useEffect(() => {
+    i18n.changeLanguage(locale);
+  }, [locale]);
 
   return (
     <AuthProvider>
@@ -144,12 +153,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <body>
       <AuthProvider>
         {/* Header com Auth */}
-        <div className="p-4 border-b bg-gray-50 flex items-center justify-between sticky top-0 z-50">
+        <div className="p-4 border-b bg-parchment parchment-texture flex items-center justify-between sticky top-0 z-50 organic-shadow">
           <div>
             <IosPwaInstallBanner />
-            <h1 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Configurações</h1>
+            <h1 className="text-sm historical-heading uppercase tracking-widest">
+              {t('header.settings')}
+            </h1>
           </div>
           <div className="flex items-center gap-4">
+            <LanguageSwitcher />
             <AuthWidget 
               location={null} 
               language={locale} 
@@ -198,14 +210,16 @@ export default function App() {
  * BOUNDARY: Captura erros de renderização ou de loader.
  */
 export function ErrorBoundary({ error }: any) {
-  let message = "Oops!";
-  let details = "Ocorreu um erro inesperado.";
+  const { t } = useTranslation();
+
+  let message = t('errors.unexpectedError');
+  let details = t('errors.unexpectedError');
   let stack: string | undefined;
 
   if (isRouteErrorResponse(error)) {
-    message = error.status === 404 ? "404" : "Erro";
+    message = error.status === 404 ? "404" : t('errors.unexpectedError');
     details = error.status === 404
-        ? "A página solicitada não foi encontrada."
+        ? t('errors.pageNotFoundDetails')
         : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
     details = error.message;
@@ -213,11 +227,11 @@ export function ErrorBoundary({ error }: any) {
   }
 
   return (
-      <main className="pt-16 p-4 container mx-auto">
-        <h1 className="text-2xl font-bold">{message}</h1>
-        <p className="mt-2 text-gray-600">{details}</p>
+      <main className="pt-16 p-4 container mx-auto historical-card organic-shadow">
+        <h1 className="text-2xl historical-heading">{message}</h1>
+        <p className="mt-2 historical-text">{details}</p>
         {stack && (
-            <pre className="w-full p-4 mt-4 bg-red-50 text-red-700 overflow-x-auto rounded-lg">
+            <pre className="w-full p-4 mt-4 bg-terracotta/10 text-terracotta overflow-x-auto rounded-lg organic-border">
           <code>{stack}</code>
         </pre>
         )}

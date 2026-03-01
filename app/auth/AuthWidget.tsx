@@ -64,13 +64,13 @@ export function AuthWidget({ location, language, countryCode, address }: AuthWid
             <div className="flex space-x-2">
                 <button
                     onClick={() => setShowLogin(true)}
-                    className="text-sm px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    className="text-sm px-3 py-1 bg-antique-gold text-deep-brown rounded organic-border hover:bg-antique-gold/80 transition-colors"
                 >
                     Entrar
                 </button>
                 <button
                     onClick={() => setShowRegister(true)}
-                    className="text-sm px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                    className="text-sm px-3 py-1 bg-olive text-parchment rounded organic-border hover:bg-olive/80 transition-colors"
                 >
                     Registar
                 </button>

@@ -10,6 +10,7 @@ import { loadQuery } from '~/sanity/loader.server';
 import { client } from '~/sanity/client';
 import { DebugVisualEditing } from '~/components/DebugVisualEditing';
 import { VisualEditing } from '@sanity/visual-editing/react-router';
+import { useTranslation } from 'react-i18next';
 
 // Interface para os dados do Sanity (schema bemCultural)
 interface BemCultural {
@@ -69,85 +70,86 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export default function HeritageSimplePage() {
   const { initial, projectId, dataset } = useLoaderData<typeof loader>();
   const { data: heritageItems } = useQuery<BemCultural[]>(BENS_CULTURAIS_QUERY, {}, { initial });
+  const { t } = useTranslation();
 
   return (
     <>
-      <div className="min-h-screen bg-gray-50 p-8">
+      <div className="min-h-screen bg-parchment parchment-texture p-8">
         <DebugVisualEditing />
         <div className="max-w-6xl mx-auto">
           {/* Header */}
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            🏛️ Bens Culturais - Sanity Visual Editing Oficial
+          <div className="historical-card p-6 mb-6 organic-shadow">
+          <h1 className="text-2xl historical-heading mb-2">
+            🏛️ {t('heritageSimple.title')}
           </h1>
-          <div className="text-sm text-gray-600">
-            <p>Project ID: <span className="font-mono text-blue-600">{projectId}</span></p>
-            <p>Dataset: <span className="font-mono text-green-600">{dataset}</span></p>
-            <p className="mt-2 text-xs text-green-600 bg-green-50 p-2 rounded">
-              🎨 Visual Editing Ativo por Padrão - Passe o mouse sobre elementos para editar
+          <div className="text-sm historical-text">
+            <p>Project ID: <span className="font-mono text-antique-gold">{projectId}</span></p>
+            <p>Dataset: <span className="font-mono text-olive">{dataset}</span></p>
+            <p className="mt-2 text-xs text-olive bg-olive/10 p-2 rounded organic-border">
+              🎨 {t('heritageSimple.visualEditingNote')}
             </p>
           </div>
           
           {/* Botão de status do Visual Editing */}
           <div className="mt-4">
-            <div className="inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-lg">
-              <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-              Visual Editing Ativo
+            <div className="inline-flex items-center px-4 py-2 bg-olive/10 text-olive rounded-lg organic-border">
+              <span className="w-2 h-2 bg-olive rounded-full mr-2"></span>
+              {t('heritageSimple.visualEditingActive')}
             </div>
-            <span className="ml-3 text-xs text-gray-500">
-              (Modo desenvolvimento - Visual Editing sempre ativo)
+            <span className="ml-3 text-xs historical-text">
+              {t('heritageSimple.devModeNote')}
             </span>
           </div>
         </div>
 
         {/* Lista de itens */}
-        <div className="bg-white rounded-lg shadow-sm">
-          <div className="px-6 py-4 border-b">
-            <h2 className="text-lg font-semibold text-gray-900">
-              📋 Bens Encontrados ({heritageItems?.length || 0})
+        <div className="historical-card organic-shadow">
+          <div className="px-6 py-4 border-b border-deep-brown/20">
+            <h2 className="text-lg historical-heading">
+              📋 {t('heritageSimple.itemsFound')} ({heritageItems?.length || 0})
             </h2>
           </div>
 
           {(!heritageItems || heritageItems.length === 0) ? (
             <div className="p-12 text-center">
               <div className="text-6xl mb-4">🏛️</div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Nenhum bem cultural encontrado
+              <h3 className="text-lg font-medium historical-text mb-2">
+                {t('common.noItems')}
               </h3>
-              <p className="text-gray-600 mb-4">
-                Adicione itens no Sanity Studio
+              <p className="historical-text mb-4">
+                {t('common.addInStudio')}
               </p>
               <a
                 href="https://catalogopatrimonio.sanity.studio/bemCultural"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="inline-flex items-center px-4 py-2 bg-antique-gold text-deep-brown rounded-lg hover:bg-antique-gold/80 transition-colors organic-border"
               >
-                📝 Abrir Sanity Studio
+                📝 {t('common.openStudio')}
               </a>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-deep-brown/10">
               {heritageItems.map((item: BemCultural) => (
-                <div key={item._id} className="p-6 hover:bg-gray-50">
+                <div key={item._id} className="p-6 hover:bg-parchment/30 transition-colors">
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                      {item.title || item.designacao || 'Sem título'}
+                    <h3 className="text-lg historical-heading mb-2">
+                      {item.title || item.designacao || t('common.noTitle')}
                     </h3>
                     
                     {item.tipo && (
-                      <span className="inline-block px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full mb-2">
+                      <span className="inline-block px-2 py-1 text-xs font-medium bg-olive/10 text-olive rounded-full mb-2 organic-border">
                         {item.tipo.title}
                       </span>
                     )}
                     
                     {item.descricao && (
-                      <p className="text-gray-600 mb-3 line-clamp-3">
+                      <p className="historical-text mb-3 line-clamp-3">
                         {item.descricao}
                       </p>
                     )}
 
-                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <div className="flex items-center gap-4 text-sm historical-text">
                       {item.coordenadas && (
                         <span>📍 {item.coordenadas.lat?.toFixed(4)}, {item.coordenadas.lng?.toFixed(4)}</span>
                       )}
@@ -156,9 +158,9 @@ export default function HeritageSimplePage() {
                         href={`https://catalogopatrimonio.sanity.studio/bemCultural/${item._id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                        className="text-antique-gold hover:text-antique-gold/80 hover:underline"
                       >
-                        Editar no Studio →
+                        {t('common.editInStudio')} →
                       </a>
                     </div>
                   </div>
@@ -172,17 +174,17 @@ export default function HeritageSimplePage() {
         <div className="mt-6 flex gap-4">
           <Link
             to="/"
-            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+            className="px-4 py-2 bg-deep-brown text-parchment rounded-lg hover:bg-deep-brown/80 transition-colors organic-border"
           >
-            🏠 Voltar ao Início
+            🏠 {t('common.backToHome')}
           </Link>
           <a
             href="https://catalogopatrimonio.sanity.studio"
             target="_blank"
             rel="noopener noreferrer"
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 bg-antique-gold text-deep-brown rounded-lg hover:bg-antique-gold/80 transition-colors organic-border"
           >
-            📝 Sanity Studio
+            📝 {t('common.sanityStudio')}
           </a>
         </div>
         </div>

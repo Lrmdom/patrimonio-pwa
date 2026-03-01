@@ -38,6 +38,9 @@ interface ClusteredMarkersProps {
   onAudioPause?: () => void;
   isAudioPlaying?: boolean;
   currentAudioId?: string | null;
+  activePopupId?: string | null;
+  onPopupOpen?: (id: string) => void;
+  createCustomIcon?: (tipo: string | undefined) => L.DivIcon;
   enableClustering?: boolean;
   maxZoom?: number;
 }
@@ -50,6 +53,9 @@ export function ClusteredMarkers({
   onAudioPause,
   isAudioPlaying = false,
   currentAudioId = null,
+  activePopupId = null,
+  onPopupOpen,
+  createCustomIcon,
   enableClustering = true,
   maxZoom = 15
 }: ClusteredMarkersProps) {
@@ -128,7 +134,6 @@ export function ClusteredMarkers({
   const renderMarkers = () => {
     return validItems.map((item) => {
       const color = getMarkerColor(item.classificacao?.titulo);
-      const icon = customIcons[color] || customIcons.local;
       const distance = userPosition ? 
         Math.round(getDistance(userPosition[0], userPosition[1], item.coordenadas!.lat, item.coordenadas!.lng)) : 
         null;
@@ -137,108 +142,107 @@ export function ClusteredMarkers({
         <Marker
           key={item._id}
           position={[item.coordenadas!.lat, item.coordenadas!.lng]}
-          icon={icon}
+          icon={createCustomIcon?.(item.tipo?.titulo) || customIcons.local}
           eventHandlers={{
-            click: () => handleMarkerClick(item)
+            click: () => onPopupOpen?.(item._id),
           }}
         >
-          <Popup 
-            autoClose={false}
-            closeOnClick={false}
-            className="heritage-popup"
-          >
-            <div className="w-64 bg-white rounded-lg overflow-hidden shadow-lg">
-              {/* Imagem */}
-              {item.galeria && item.galeria[0]?.url ? (
-                <div className="w-full h-28 overflow-hidden bg-gray-100">
-                  <img 
-                    src={`${item.galeria[0].url}?w=300&h=200&fit=crop&auto=format&q=75`} 
-                    alt={item.title}
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                  />
-                </div>
-              ) : (
-                <div className="w-full h-2 bg-gradient-to-r from-blue-500 to-blue-600"></div>
-              )}
-
-              {/* Conteúdo */}
-              <div className="p-3">
-                <div className="mb-2">
-                  <h4 className="font-bold text-sm leading-tight text-gray-800 mb-1">
-                    {item.title}
-                  </h4>
-                  <div className="flex flex-wrap gap-1">
-                    <span className="text-[7px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold">
-                      {item.tipo?.titulo || 'Património'}
-                    </span>
-                    {item.classificacao?.titulo && (
-                      <span className="text-[7px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded uppercase font-bold">
-                        {item.classificacao.titulo}
-                      </span>
-                    )}
+          {activePopupId === item._id && (
+            <Popup 
+              autoClose={false}
+              closeOnClick={false}
+              className="heritage-popup"
+            >
+              <div className="p-0 w-[220px] flex flex-col overflow-hidden historical-card organic-shadow">
+                {/* Imagem */}
+                {item.galeria && item.galeria[0]?.url ? (
+                  <div className="w-full h-28 overflow-hidden bg-parchment/30 border-b border-deep-brown/20">
+                    <img 
+                      src={`${item.galeria[0].url}?w=200&h=200&fit=crop&auto=format&q=75`} 
+                      alt={item.title}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
                   </div>
-                </div>
-
-                {/* Áudio */}
-                {item.audioNarracao?.fileKey && (
-                  <div className="bg-blue-50 rounded-lg p-2 border border-blue-100 mb-2">
-                    <button
-                      onClick={(e) => handleAudioToggle(e, item)}
-                      className="w-full flex items-center gap-3 text-left"
-                    >
-                      <div className="bg-blue-600 text-white rounded-full p-2 shadow-sm flex-shrink-0">
-                        {currentAudioId === item._id && isAudioPlaying ? (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                          </svg>
-                        ) : (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M8 5v14l11-7z"/>
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[9px] font-bold text-blue-900 uppercase">Narração</span>
-                        <span className="text-[8px] text-blue-600 truncate">
-                          {currentAudioId === item._id && isAudioPlaying ? 'A reproduzir...' : 'Ouvir história'}
-                        </span>
-                      </div>
-                    </button>
-                  </div>
+                ) : (
+                  <div className="w-full h-2 bg-antique-gold"></div>
                 )}
 
-                {/* Actions */}
-                <div className="flex justify-between items-center pt-2 border-t border-gray-100">
-                  <Link 
-                    to={`/heritages/${item._id}`}
-                    className="text-blue-600 font-black text-[9px] uppercase hover:text-blue-700 transition-colors"
-                  >
-                    Detalhes →
-                  </Link>
-                  
-                  {distance !== null && (
-                    <span className="text-[9px] font-medium text-gray-400">
-                      {formatDistance(distance)}
-                    </span>
+                {/* Conteúdo */}
+                <div className="p-3 flex flex-col gap-2">
+                  <div className="mb-2">
+                    <h4 className="historical-heading text-sm leading-tight">
+                      {item.title}
+                    </h4>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      <span className="text-[7px] bg-olive/10 text-olive px-1.5 py-0.5 rounded uppercase font-bold organic-border">{item.tipo?.titulo || 'Património'}</span>
+                      {item.classificacao?.titulo && (
+                        <span className="text-[7px] bg-terracotta/10 text-terracotta px-1.5 py-0.5 rounded uppercase font-bold organic-border">{item.classificacao.titulo}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Áudio */}
+                  {item.audioNarracao?.fileKey && (
+                    <div className="bg-olive/10 rounded-lg p-2 border border-olive/20 mb-2">
+                      <button
+                        onClick={(e) => handleAudioToggle(e, item)}
+                        className="w-full flex items-center gap-3 text-left"
+                      >
+                        <div className="bg-antique-gold text-deep-brown rounded-full p-2 shadow-sm flex-shrink-0 organic-border">
+                          {currentAudioId === item._id && isAudioPlaying ? (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                            </svg>
+                          ) : (
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M8 5v14l11-7z"/>
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[9px] font-bold text-deep-brown uppercase">Narração</span>
+                          <span className="text-[8px] text-olive truncate">
+                            {currentAudioId === item._id && isAudioPlaying ? 'A reproduzir...' : 'Ouvir história'}
+                          </span>
+                        </div>
+                      </button>
+                    </div>
                   )}
-                  
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      console.log('AR view for:', item._id);
-                    }}
-                    className="bg-black text-white px-2 py-1 rounded text-[8px] font-bold flex items-center gap-1 hover:bg-gray-800 transition-colors"
-                  >
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="white">
-                      <path d="M7 2h10l3 5v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7l3-5zm1 2l-2 3h12l-2-3H8z"/>
-                    </svg>
-                    VER EM AR
-                  </button>
+
+                  {/* Actions */}
+                  <div className="flex justify-between items-center pt-2 border-t border-deep-brown/20">
+                    <Link 
+                      to={`/heritages/${item._id}`}
+                      className="text-antique-gold font-black text-[9px] uppercase hover:text-antique-gold/80"
+                    >
+                      Detalhes →
+                    </Link>
+                    
+                    {distance !== null && (
+                      <span className="text-[9px] font-medium historical-text">
+                        {formatDistance(distance)}
+                      </span>
+                    )}
+                    
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // AR functionality will be added later
+                        console.log('AR view for:', item._id);
+                      }}
+                      className="bg-deep-brown text-parchment px-2 py-1 rounded text-[8px] font-bold flex items-center gap-1 organic-border hover:bg-deep-brown/80"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="white">
+                        <path d="M7 2h10l3 5v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7l3-5zm1 2l-2 3h12l-2-3H8z"/>
+                      </svg>
+                      VER EM AR
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </Popup>
+            </Popup>
+          )}
         </Marker>
       );
     });

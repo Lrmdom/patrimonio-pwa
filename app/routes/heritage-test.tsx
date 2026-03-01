@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { type LoaderFunctionArgs, useLoaderData, Link } from 'react-router';
+import { useTranslation } from 'react-i18next';
 
 // Interface para os dados do Sanity (schema bemCultural)
 interface BemCultural {
@@ -135,6 +136,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function HeritageTestPage() {
   const { heritageItems, config, error } = useLoaderData<typeof loader>();
+  const { t } = useTranslation();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -144,10 +146,10 @@ export default function HeritageTestPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                🏛️ Teste de Bens Culturais
+                🏛️ {t('heritageTest.title')}
               </h1>
               <p className="text-sm text-gray-600 mt-1">
-                Lista de itens do Sanity Studio (schema bemCultural)
+                {t('heritageTest.subtitle')}
               </p>
             </div>
             <div className="flex gap-4">
@@ -157,13 +159,13 @@ export default function HeritageTestPage() {
                 rel="noopener noreferrer"
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
               >
-                📝 Abrir Sanity Studio
+                📝 {t('common.openStudio')}
               </a>
               <Link
                 to="/"
                 className="bg-gray-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-700 transition-colors"
               >
-                🏠 Voltar ao Início
+                🏠 {t('common.backToHome')}
               </Link>
             </div>
           </div>
@@ -174,31 +176,31 @@ export default function HeritageTestPage() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            ⚙️ Configuração Sanity
+            ⚙️ {t('heritageTest.configTitle')}
           </h2>
           <div className="flex flex-col space-y-4">
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-              <span className="text-sm font-medium text-gray-700">Project ID:</span>
+              <span className="text-sm font-medium text-gray-700">{t('heritageTest.projectId')}:</span>
               <span className="text-sm font-mono text-blue-600">{config.projectId}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-              <span className="text-sm font-medium text-gray-700">Dataset:</span>
+              <span className="text-sm font-medium text-gray-700">{t('heritageTest.dataset')}:</span>
               <span className="text-sm font-mono text-green-600">{config.dataset}</span>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-              <span className="text-sm font-medium text-gray-700">Visual Editing:</span>
+              <span className="text-sm font-medium text-gray-700">{t('heritageTest.visualEditing')}:</span>
               <span className={`text-sm font-medium ${config.visualEditingEnabled ? 'text-green-600' : 'text-red-600'}`}>
-                {config.visualEditingEnabled ? '✅ Ativado' : '❌ Desativado'}
+                {config.visualEditingEnabled ? '✅ ' + t('heritageTest.enabled') : '❌ ' + t('heritageTest.disabled')}
               </span>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-              <span className="text-sm font-medium text-gray-700">Stega:</span>
+              <span className="text-sm font-medium text-gray-700">{t('heritageTest.stega')}:</span>
               <span className={`text-sm font-medium ${config.stegaEnabled ? 'text-green-600' : 'text-red-600'}`}>
-                {config.stegaEnabled ? '✅ Ativado' : '❌ Desativado'}
+                {config.stegaEnabled ? '✅ ' + t('heritageTest.enabled') : '❌ ' + t('heritageTest.disabled')}
               </span>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-              <span className="text-sm font-medium text-gray-700">Studio URL:</span>
+              <span className="text-sm font-medium text-gray-700">{t('heritageTest.studioUrl')}:</span>
               <a
                 href={config.studioUrl}
                 target="_blank"
@@ -209,7 +211,7 @@ export default function HeritageTestPage() {
               </a>
             </div>
             <div className="flex items-center justify-between p-3 bg-gray-50 rounded">
-              <span className="text-sm font-medium text-gray-700">Total Itens:</span>
+              <span className="text-sm font-medium text-gray-700">{t('heritageTest.totalItems')}:</span>
               <span className="text-sm font-bold text-purple-600">{heritageItems.length}</span>
             </div>
           </div>
@@ -221,10 +223,10 @@ export default function HeritageTestPage() {
             <div className="flex items-center">
               <span className="text-red-600 text-xl mr-3">❌</span>
               <div>
-                <h3 className="text-lg font-semibold text-red-800">Erro na Configuração</h3>
+                <h3 className="text-lg font-semibold text-red-800">{t('heritageTest.configError')}</h3>
                 <p className="text-red-700 mt-1">{error}</p>
                 <p className="text-sm text-red-600 mt-2">
-                  Verifique as variáveis de ambiente no arquivo .env
+                  {t('heritageTest.checkEnvVars')}
                 </p>
               </div>
             </div>
@@ -235,7 +237,7 @@ export default function HeritageTestPage() {
         <div className="bg-white rounded-lg shadow-sm">
           <div className="px-6 py-4 border-b">
             <h2 className="text-lg font-semibold text-gray-900">
-              📋 Bens Culturais ({heritageItems.length})
+              📋 {t('heritageTest.itemsList')} ({heritageItems.length})
             </h2>
           </div>
           
@@ -243,12 +245,12 @@ export default function HeritageTestPage() {
             <div className="p-12 text-center">
               <div className="text-gray-400 text-6xl mb-4">🏛️</div>
               <h3 className="text-lg font-medium text-gray-900 mb-2">
-                Nenhum bem cultural encontrado
+                {t('common.noItems')}
               </h3>
               <p className="text-gray-600 mb-4">
                 {error 
-                  ? 'Verifique a configuração do Sanity Studio'
-                  : 'Adicione itens no Sanity Studio para vê-los aqui'
+                  ? t('heritageTest.checkStudioConfig')
+                  : t('heritageTest.addItemsInStudio')
                 }
               </p>
               <a
@@ -257,7 +259,7 @@ export default function HeritageTestPage() {
                 rel="noopener noreferrer"
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                📝 Adicionar no Sanity Studio
+                📝 {t('heritageTest.addInStudio')}
               </a>
             </div>
           ) : (
@@ -268,7 +270,7 @@ export default function HeritageTestPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-lg font-semibold text-gray-900">
-                          {item.designacao || item.title || 'Sem título'}
+                          {item.designacao || item.title || t('common.noTitle')}
                         </h3>
                         {item.tipo && (
                           <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
@@ -310,7 +312,7 @@ export default function HeritageTestPage() {
                           rel="noopener noreferrer"
                           className="text-green-600 hover:text-green-800 hover:underline"
                         >
-                          Editar no Studio →
+                          {t('common.editInStudio')} →
                         </a>
                       </div>
                     </div>

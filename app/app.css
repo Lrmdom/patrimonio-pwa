@@ -3,15 +3,54 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-serif: "Crimson Text", serif;
+
+  --color-terracotta: #D2691E;
+  --color-olive: #556B2F;
+  --color-cream: #FFFDD0;
+  --color-antique-gold: #D4AF37;
+  --color-deep-brown: #8B4513;
+  --color-parchment: #F5F5DC;
 }
 
 html,
 body {
-  @apply bg-white dark:bg-gray-950;
+  @apply bg-parchment dark:bg-gray-950;
 
   @media (prefers-color-scheme: dark) {
     color-scheme: dark;
   }
+}
+
+/* Organic Historical Elegance Utilities */
+.historical-card {
+  @apply bg-parchment border border-deep-brown/20 rounded-2xl shadow-lg;
+  background-image: radial-gradient(circle at 20% 80%, rgba(212, 175, 55, 0.05) 0%, transparent 50%),
+                    radial-gradient(circle at 80% 20%, rgba(210, 105, 30, 0.03) 0%, transparent 50%);
+  background-size: 200px 200px;
+}
+
+.organic-shadow {
+  box-shadow: 0 8px 32px rgba(139, 69, 19, 0.1), 0 4px 16px rgba(139, 69, 19, 0.05);
+}
+
+.historical-heading {
+  @apply font-serif font-bold text-deep-brown;
+}
+
+.historical-text {
+  @apply text-deep-brown/80;
+}
+
+.organic-border {
+  border-radius: 16px 12px 20px 8px;
+}
+
+.parchment-texture {
+  background-image: 
+    radial-gradient(circle at 25% 25%, rgba(139, 69, 19, 0.02) 0%, transparent 50%),
+    radial-gradient(circle at 75% 75%, rgba(210, 105, 30, 0.01) 0%, transparent 50%);
+  background-size: 60px 60px;
 }
 
 /* Estilos do Leaflet */
@@ -22,7 +61,7 @@ body {
 
 .leaflet-popup-content h3 {
   margin: 0;
-  color: #1a202c;
+  color: var(--color-deep-brown);
 }
 
 .line-clamp-3 {
@@ -30,6 +69,7 @@ body {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  line-clamp: 3;
 }
 
 .user-location-marker {
@@ -49,15 +89,15 @@ body {
 .pulse-dot {
   width: 12px;
   height: 12px;
-  background: #2563eb;
-  border: 2px solid white;
+  background: var(--color-antique-gold);
+  border: 2px solid var(--color-parchment);
   border-radius: 50%;
   position: absolute;
   z-index: 10;
 }
 
 .pulse-ring {
-  border: 3px solid #2563eb;
+  border: 3px solid var(--color-antique-gold);
   border-radius: 50%;
   height: 40px;
   width: 40px;
