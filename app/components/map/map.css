@@ -1,0 +1,383 @@
+/**
+ * Estilos para componentes de mapa otimizados
+ * Inclui animações e responsive design
+ */
+
+/* Heritage Markers */
+.heritage-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.marker-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.marker-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+  position: relative;
+}
+
+.marker-ring {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border: 2px solid;
+  border-radius: 50%;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0.6;
+  animation: markerPulse 2s infinite;
+}
+
+/* User Location Marker */
+.user-location-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.user-location-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 30px;
+  height: 30px;
+  background: rgba(37, 99, 235, 0.25);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.user-dot {
+  background-color: #2563eb;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+/* Animations */
+@keyframes markerPulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.8;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+/* Popup Styles */
+.heritage-popup .leaflet-popup-content-wrapper {
+  border-radius: 12px;
+  padding: 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(10px);
+}
+
+.heritage-popup .leaflet-popup-content {
+  margin: 0;
+  min-width: 256px;
+  max-width: 256px;
+}
+
+.heritage-popup .leaflet-popup-tip {
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* GPS Control Styles */
+.leaflet-control-gps {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: none;
+  margin: 10px;
+}
+
+.leaflet-control-gps button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+}
+
+.leaflet-control-gps button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.leaflet-control-gps button:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Layer Control Customization */
+.leaflet-control-layers {
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: none;
+  margin: 10px;
+}
+
+.leaflet-control-layers-expanded {
+  background: white;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.leaflet-control-layers-base label,
+.leaflet-control-layers-overlays label {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.leaflet-control-layers-base label:hover,
+.leaflet-control-layers-overlays label:hover {
+  background-color: #f3f4f6;
+}
+
+.leaflet-control-layers-selector {
+  margin-right: 8px;
+}
+
+/* Scale Control Customization */
+.leaflet-control-scale {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .leaflet-control-gps {
+    margin: 5px;
+  }
+  
+  .leaflet-control-gps button {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+  
+  .leaflet-control-layers {
+    margin: 5px;
+  }
+  
+  .heritage-popup .leaflet-popup-content {
+    min-width: 280px;
+    max-width: 280px;
+  }
+  
+  .marker-dot {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .marker-ring {
+    width: 22px;
+    height: 22px;
+  }
+}
+
+@media (max-width: 480px) {
+  .leaflet-control-gps button {
+    padding: 4px 8px;
+    font-size: 9px;
+  }
+  
+  .heritage-popup .leaflet-popup-content {
+    min-width: 260px;
+    max-width: 260px;
+  }
+  
+  .user-dot {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .pulse-ring {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .leaflet-control-gps {
+    background: #1f2937;
+    color: white;
+  }
+  
+  .leaflet-control-layers {
+    background: #1f2937;
+    color: white;
+  }
+  
+  .leaflet-control-layers-expanded {
+    background: #1f2937;
+    color: white;
+  }
+  
+  .leaflet-control-layers-base label:hover,
+  .leaflet-control-layers-overlays label:hover {
+    background-color: #374151;
+  }
+  
+  .leaflet-control-scale {
+    background: rgba(31, 41, 55, 0.9);
+    color: white;
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .heritage-popup .leaflet-popup-content-wrapper {
+    background: #1f2937;
+    color: white;
+  }
+  
+  .heritage-popup .leaflet-popup-tip {
+    background: #1f2937;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .marker-dot {
+    border-width: 3px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+  }
+  
+  .marker-ring {
+    border-width: 3px;
+    opacity: 0.8;
+  }
+  
+  .leaflet-control-gps button:focus {
+    outline-width: 3px;
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .marker-ring,
+  .pulse-ring {
+    animation: none;
+  }
+  
+  .leaflet-control-gps button,
+  .leaflet-control-layers-base label,
+  .leaflet-control-layers-overlays label {
+    transition: none;
+  }
+}
+
+/* Marker Clustering Styles - Usando classes padrão do react-leaflet-cluster */
+.marker-cluster {
+  background: #2563eb !important;
+  border-radius: 50% !important;
+  text-align: center !important;
+  color: white !important;
+  font-weight: bold !important;
+  border: 3px solid white !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+  transition: all 0.2s ease !important;
+  cursor: pointer !important;
+}
+
+.marker-cluster:hover {
+  transform: scale(1.1) !important;
+  filter: brightness(1.1) !important;
+}
+
+/* Estilos para diferentes tamanhos de cluster */
+.cluster-small {
+  width: 35px !important;
+  height: 35px !important;
+  font-size: 12px !important;
+  line-height: 35px !important;
+}
+
+.cluster-medium {
+  width: 40px !important;
+  height: 40px !important;
+  font-size: 14px !important;
+  line-height: 40px !important;
+}
+
+.cluster-large {
+  width: 45px !important;
+  height: 45px !important;
+  font-size: 16px !important;
+  line-height: 45px !important;
+}
+
+/* Cores específicas por tipo */
+.cluster-small.cluster-small {
+  background: #2563eb !important;
+}
+
+.cluster-medium.cluster-medium {
+  background: #059669 !important;
+}
+
+.cluster-large.cluster-large {
+  background: #dc2626 !important;
+}
+
+/* Para 5-10 markers (roxo) */
+.cluster-medium:not(.cluster-large):not(.cluster-small) {
+  background: #7c3aed !important;
+}

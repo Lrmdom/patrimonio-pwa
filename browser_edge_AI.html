@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <title>IA Avançada no Browser (TrOCR)</title>
+    <style>
+        body { font-family: system-ui; max-width: 800px; margin: 20px auto; padding: 20px; background: #f0f2f5; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        #preview { max-width: 100%; border-radius: 8px; margin: 15px 0; display: none; }
+        #status { color: #007bff; font-weight: bold; margin: 10px 0; }
+        #output { background: #1e1e1e; color: #39ff14; padding: 20px; border-radius: 8px; min-height: 50px; font-family: monospace; }
+        .loader { height: 4px; width: 100%; background: #e0e0e0; border-radius: 2px; overflow: hidden; display: none; }
+        .progress { width: 0%; height: 100%; background: #007bff; transition: width 0.3s; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h2>OCR com Vision Transformers</h2>
+    <p>Este modelo é mais inteligente que o Tesseract, mas o primeiro carregamento é maior (~150MB).</p>
+
+    <input type="file" id="imageInput" accept="image/*">
+    <div id="status">A aguardar ficheiro...</div>
+    <div class="loader" id="loader"><div class="progress" id="progress"></div></div>
+
+    <img id="preview">
+
+    <h3>Texto Extraído:</h3>
+    <div id="output">O resultado aparecerá aqui...</div>
+</div>
+
+<script type="module">
+    // Importamos a biblioteca Transformers.js
+    import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
+
+    const imageInput = document.getElementById('imageInput');
+    const status = document.getElementById('status');
+    const output = document.getElementById('output');
+    const preview = document.getElementById('preview');
+    const progress = document.getElementById('progress');
+    const loader = document.getElementById('loader');
+
+    let ocrPipeline = null;
+
+    imageInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Mostrar imagem
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = 'block';
+
+        if (!ocrPipeline) {
+            status.textContent = "A carregar modelo Transformer (aprox. 150MB)...";
+            loader.style.display = 'block';
+
+            // Inicializar o pipeline com o modelo TrOCR da Microsoft
+            ocrPipeline = await pipeline('image-to-text', 'Xenova/trocr-small-printed', {
+                progress_callback: (p) => {
+                    if (p.status === 'progress') {
+                        progress.style.width = `${p.loaded / p.total * 100}%`;
+                    }
+                }
+            });
+        }
+
+        status.textContent = "A processar com Deep Learning...";
+        output.textContent = "A ler...";
+
+        try {
+            // Executar a IA
+            const result = await ocrPipeline(preview.src);
+
+            status.textContent = "Concluído!";
+            output.textContent = result[0].generated_text;
+        } catch (err) {
+            status.textContent = "Erro no processamento.";
+            output.textContent = err.message;
+        }
+    });
+</script>
+
+</body>
+</html>

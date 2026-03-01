@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react'
 import { getSupabase } from '~/auth/utils/supabase'
 import type { User } from '@supabase/supabase-js'
-import InputMask from 'react-input-mask';
 interface UserSettingsModalProps {
     isOpen: boolean
     onClose: () => void
@@ -17,6 +16,8 @@ interface UserProfile {
     phone: string
     email: string
     auth_user_id: string
+    created_at?: string
+    updated_at?: string
 }
 
 export function UserSettingsModal({ isOpen, onClose, user, onProfileUpdate }: UserSettingsModalProps) {
@@ -40,72 +41,69 @@ export function UserSettingsModal({ isOpen, onClose, user, onProfileUpdate }: Us
     }, [isOpen, user.id])
 
     const loadUserProfile = async () => {
-        setIsLoading(true)
-        try {
-            // Buscar o perfil pelo auth_user_id
-            const { data, error } = await getSupabase()
-                .from('profiles')
-                .select('*')
-                .eq('auth_user_id', user.id)
-                .single()
+        const fetchProfile = async () => {
+            try {
+                const supabase = getSupabase()
+                const { data, error } = await supabase
+                    .from('profiles' as any)
+                    .select('*')
+                    .eq('auth_user_id', user.id)
+                    .single()
 
-            if (error) {
-                // Se não encontrar perfil, criar um novo
-                if (error.code === 'PGRST116') {
-                    await createNewProfile()
-                    return
+                if (error && error.code !== 'PGRST116') {
+                    throw error
                 }
-                throw error
+
+                if (data) {
+                    setProfile({
+                        id: (data as any).id,
+                        first_name: (data as any).first_name || '',
+                        last_name: (data as any).last_name || '',
+                        phone: (data as any).phone || '',
+                        email: (data as any).email || user.email || '',
+                        auth_user_id: (data as any).auth_user_id,
+                        created_at: (data as any).created_at,
+                        updated_at: (data as any).updated_at
+                    })
+                } else {
+                    // Create profile if it doesn't exist
+                    const newProfile = {
+                        auth_user_id: user.id,
+                        email: user.email || '',
+                        first_name: '',
+                        last_name: '',
+                        phone: '',
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }
+
+                    const { data: insertedProfile, error: insertError } = await supabase
+                        .from('profiles' as any)
+                        .insert(newProfile as any)
+                        .select()
+                        .single()
+
+                    if (insertError) throw insertError
+
+                    setProfile({
+                        id: (insertedProfile as any).id,
+                        first_name: (insertedProfile as any).first_name || '',
+                        last_name: (insertedProfile as any).last_name || '',
+                        phone: (insertedProfile as any).phone || '',
+                        email: (insertedProfile as any).email || user.email || '',
+                        auth_user_id: (insertedProfile as any).auth_user_id,
+                        created_at: (insertedProfile as any).created_at,
+                        updated_at: (insertedProfile as any).updated_at
+                    })
+                }
+            } catch (error) {
+                console.error('Error fetching profile:', error)
+                setMessage({ type: 'error', text: 'Erro ao carregar perfil.' })
+            } finally {
+                setIsLoading(false)
             }
-
-            setProfile({
-                id: data.id,
-                first_name: data.first_name || '',
-                last_name: data.last_name || '',
-                phone: data.phone || '',
-                email: data.email || user.email || '',
-                auth_user_id: data.auth_user_id
-            })
-        } catch (error) {
-            console.error('Erro ao carregar perfil:', error)
-            setMessage({ type: 'error', text: 'Erro ao carregar dados do perfil' })
-        } finally {
-            setIsLoading(false)
         }
-    }
-
-    const createNewProfile = async () => {
-        try {
-            const newProfile = {
-                auth_user_id: user.id,
-                email: user.email || '',
-                first_name: '',
-                last_name: '',
-                phone: '',
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            }
-
-            const { data, error } = await getSupabase()
-                .from('profiles')
-                .insert(newProfile)
-                .select()
-                .single()
-
-            if (error) throw error
-
-            setProfile({
-                id: data.id,
-                first_name: data.first_name || '',
-                last_name: data.last_name || '',
-                phone: data.phone || '',
-                email: data.email || user.email || '',
-                auth_user_id: data.auth_user_id
-            })
-        } catch (error) {
-            console.error('Erro ao criar perfil:', error)
-            throw error
-        }
+        fetchProfile()
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -140,18 +138,18 @@ export function UserSettingsModal({ isOpen, onClose, user, onProfileUpdate }: Us
             if (profile.id) {
                 // Atualizar perfil existente
                 result = await getSupabase()
-                    .from('profiles')
-                    .update(updateData)
+                    .from('profiles' as any)
+                    .update(updateData as any)
                     .eq('auth_user_id', user.id)
             } else {
                 // Criar novo perfil se não existir
                 result = await getSupabase()
-                    .from('profiles')
+                    .from('profiles' as any)
                     .insert({
                         ...updateData,
                         auth_user_id: user.id,
                         created_at: new Date().toISOString()
-                    })
+                    } as any)
             }
 
             if (result.error) throw result.error

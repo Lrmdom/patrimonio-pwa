@@ -1,19 +1,20 @@
 import {
-  isRouteErrorResponse,
   Links,
-  type LoaderFunctionArgs,
   Meta,
   Outlet,
   Scripts,
   ScrollRestoration,
-  useLoaderData,
+  useRouteLoaderData,
+  isRouteErrorResponse,
 } from "react-router";
-
-import type { Route } from "./+types/root";
-import "./app.css";
-import { setupPush } from "~/utils/push.client";
-import IosPwaInstallBanner from "~/components/IosPwaInstallBanner";
-import { getGCSStorageClient } from '~/utils/gcs.server';
+import type { Route } from "react-router";
+import stylesheet from "~/app.css?url";
+import IosPwaInstallBanner from "./components/IosPwaInstallBanner";
+import { getPreviewData } from "~/sanity/session";
+import { SanityVisualEditing } from "~/components/SanityVisualEditing";
+import { AuthProvider } from "~/auth/context/AuthContext";
+import { AuthWidget } from "~/auth/AuthWidget";
+import { getGCSStorageClient } from "~/utils/gcs.server";
 
 /**
  * Detecta a linguagem preferencial do utilizador através dos headers do browser.
@@ -33,12 +34,15 @@ function getServerLanguage(request: Request): string {
  * LOADER: Executa apenas no servidor.
  * Obtém os dados do Google Cloud Storage e define o locale.
  */
-export const loader = async ({ request, params }: LoaderFunctionArgs) => {
+export const loader = async ({ request, params }: any) => {
   // 1. Inicializa o cliente GCS (usando a lógica singleton do seu gcs.server.ts)
   const gcsStorageClient = await getGCSStorageClient();
 
   // 2. Determina o locale (prioridade: params da URL > header > fallback 'pt')
   let locale = params.locale || getServerLanguage(request) || 'pt';
+
+  // 3. Obtém dados do preview mode do Sanity
+  const { preview } = await getPreviewData(request);
 
   const GCS_BUCKET_NAME = "heritage-sanity-json-data";
   const GCS_DATA_FILE_NAME = `heritage-sanity-data-${locale}.json`;
@@ -52,19 +56,49 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     console.log(`Successfully read GCS file: ${GCS_DATA_FILE_NAME}`);
   } catch (error) {
     console.error(`Error reading GCS file ${GCS_DATA_FILE_NAME}:`, error);
+    // Se falhar, retorna dados mock para não quebrar o mapa
+    bucketData = [
+      {
+        _id: "1",
+        title: "Igreja de Santa Maria",
+        coordenadas: { lat: 37.1261, lng: -7.6499 },
+        tipo: { titulo: "Religioso" },
+        classificacao: { titulo: "Monumento Nacional" }
+      },
+      {
+        _id: "2", 
+        title: "Castelo de Tavira",
+        coordenadas: { lat: 37.1280, lng: -7.6505 },
+        tipo: { titulo: "Militar" },
+        classificacao: { titulo: "Imóvel de Interesse Público" }
+      },
+      {
+        _id: "3",
+        title: "Praça da República",
+        coordenadas: { lat: 37.1270, lng: -7.6520 },
+        tipo: { titulo: "Espaço Público" },
+        classificacao: { titulo: "Conjunto Urbano" }
+      }
+    ];
   }
 
   // Retornamos os dados. No React Router v7, o objeto retornado fica disponível no useLoaderData.
   return {
     bucketData,
     locale,
+    preview,
     ENV: {
-      NODE_ENV: process.env.NODE_ENV
+      NODE_ENV: process.env.NODE_ENV,
+      PUBLIC_SANITY_PROJECT_ID: process.env.PUBLIC_SANITY_PROJECT_ID || import.meta.env.VITE_SANITY_STUDIO_PROJECT_ID,
+      PUBLIC_SANITY_DATASET: process.env.PUBLIC_SANITY_DATASET || import.meta.env.VITE_SANITY_STUDIO_DATASET,
+      PUBLIC_SANITY_STUDIO_URL: process.env.PUBLIC_SANITY_STUDIO_URL || import.meta.env.VITE_SANITY_STUDIO_URL,
+      SANITY_API_READ_TOKEN: process.env.SANITY_API_READ_TOKEN || import.meta.env.SANITY_VIEWER_TOKEN,
     }
   };
 };
 
-export const links: Route.LinksFunction = () => [
+export const links: any = () => [
+  { rel: "stylesheet", href: stylesheet },
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {
     rel: "preconnect",
@@ -84,12 +118,13 @@ export const links: Route.LinksFunction = () => [
  * Corrigido para usar useLoaderData() para obter o locale e dados do bucket.
  */
 export function Layout({ children }: { children: React.ReactNode }) {
-  const data = useLoaderData<typeof loader>();
+  const data = useRouteLoaderData("root") as any;
 
   // Fallback seguro caso o loader ainda não tenha corrido ou tenha falhado
   const locale = data?.locale || "pt";
 
   return (
+    <AuthProvider>
       <html lang={locale}>
       <head>
         <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -97,27 +132,42 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        {/* Injeta variáveis de ambiente para o client */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.ENV = ${JSON.stringify(data?.ENV || {})};
+            `,
+          }}
+        />
       </head>
       <body>
-      <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
-        <div>
-          <IosPwaInstallBanner />
-          <h1 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Configurações</h1>
+      <AuthProvider>
+        {/* Header com Auth */}
+        <div className="p-4 border-b bg-gray-50 flex items-center justify-between sticky top-0 z-50">
+          <div>
+            <IosPwaInstallBanner />
+            <h1 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Configurações</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <AuthWidget 
+              location={null} 
+              language={locale} 
+              countryCode={null} 
+              address={null} 
+            />
+          </div>
         </div>
-        <button
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md shadow-sm transition-colors"
-            onClick={() => setupPush()}
-        >
-          Ativar Notificações
-        </button>
-      </div>
 
-      {children}
+        {/* Conteúdo principal */}
+        {children}
+      </AuthProvider>
 
       <ScrollRestoration />
       <Scripts />
       </body>
       </html>
+    </AuthProvider>
   );
 }
 
@@ -125,13 +175,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
  * APP: Renderiza a rota atual dentro do Layout.
  */
 export default function App() {
-  return <Outlet />;
+  const data = useRouteLoaderData("root") as any;
+  const preview = data?.preview || false;
+  const isDev = import.meta.env.DEV;
+  
+  console.log('🔍 App renderizado, preview:', preview, 'isDev:', isDev);
+  
+  return (
+    <>
+      <Outlet />
+      {(preview || isDev) && (
+        <>
+          {console.log('🎨 Renderizando SanityVisualEditing')}
+          <SanityVisualEditing />
+        </>
+      )}
+    </>
+  );
 }
 
 /**
  * BOUNDARY: Captura erros de renderização ou de loader.
  */
-export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+export function ErrorBoundary({ error }: any) {
   let message = "Oops!";
   let details = "Ocorreu um erro inesperado.";
   let stack: string | undefined;

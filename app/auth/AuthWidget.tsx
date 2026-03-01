@@ -37,7 +37,7 @@ export function AuthWidget({ location, language, countryCode, address }: AuthWid
     if (!user) {
         if (showLogin || showRegister) {
             return (
-                <div className='fixed inset-0 z-50 flex justify-center items-center bg-black/50 overflow-y-auto p-4'>
+                <div className='fixed inset-0 z-[60] flex justify-center items-center bg-black/50 overflow-y-auto p-4'>
                     {showRegister ? (
                         <RegisterForm
                             onClose={() => setShowRegister(false)}

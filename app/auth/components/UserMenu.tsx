@@ -2,14 +2,14 @@
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '~/auth/utils/supabase'
 import type { User } from '@supabase/supabase-js'
-import { UserSettingsModal } from './UserSettingsModal'
+// import { UserSettingsModal } from './UserSettingsModal' // Temporariamente desativado
 import i18n from "i18next";
 import {InviteUserForm} from "./InviteUserForm"
 interface UserMenuProps {
     user: User
 }
 
-async function inviteUser(inviteEmail) {
+async function inviteUser(inviteEmail: string) {
     const formData = new FormData()
     formData.set("email", inviteEmail)
 
@@ -139,7 +139,7 @@ export function UserMenu({ user}: UserMenuProps) {
 
                 {/* Menu dropdown */}
                 {isOpen && (
-                    <div className="absolute right-0 top-16 bg-white rounded-2xl shadow-xl border border-gray-200 py-3 w-64 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="absolute right-0 top-16 bg-white rounded-2xl shadow-xl border border-gray-200 py-3 w-64 z-[60] animate-in fade-in slide-in-from-top-2 duration-200">
 
                         {/* Header do menu */}
                         <div className="px-4 py-3 border-b border-gray-100">
@@ -204,12 +204,12 @@ export function UserMenu({ user}: UserMenuProps) {
                 )}
             </div>
 
-            {/* Modal de Definições */}
-            <UserSettingsModal
+            {/* Modal de Definições - Temporariamente desativado */}
+            {/* <UserSettingsModal
                 isOpen={showSettings}
                 onClose={() => setShowSettings(false)}
                 user={user}
-            />
+            /> */}
         </>
     )
 }

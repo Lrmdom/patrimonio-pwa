@@ -13,6 +13,8 @@ body {
     color-scheme: dark;
   }
 }
+
+/* Estilos do Leaflet */
 .leaflet-popup-content-wrapper {
   border-radius: 8px;
   padding: 4px;
@@ -29,7 +31,7 @@ body {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-/* No seu app.css */
+
 .user-location-marker {
   background: transparent;
   border: none;
@@ -47,7 +49,7 @@ body {
 .pulse-dot {
   width: 12px;
   height: 12px;
-  background: #2563eb; /* Azul */
+  background: #2563eb;
   border: 2px solid white;
   border-radius: 50%;
   position: absolute;
@@ -57,7 +59,7 @@ body {
 .pulse-ring {
   border: 3px solid #2563eb;
   border-radius: 50%;
-  height: 40px; /* Aumentado para visibilidade mobile */
+  height: 40px;
   width: 40px;
   position: absolute;
   animation: pulsate 2s ease-out infinite;
@@ -69,14 +71,12 @@ body {
   100% { transform: scale(1.5); opacity: 0; }
 }
 
-/* Adicionar ao CSS global */
 .ar-card {
-  will-change: transform, opacity; /* Otimização para GPU */
+  will-change: transform, opacity;
   backface-visibility: hidden;
   transform: translateZ(0);
 }
 
-/* Transição mais natural */
 .smooth-transition {
   transition:
           left 0.6s ease-out,
@@ -84,7 +84,6 @@ body {
           opacity 0.3s ease-out;
 }
 
-/* Para dispositivos lentos, reduzir animações */
 @media (prefers-reduced-motion: reduce) {
   .smooth-transition {
     transition: none;

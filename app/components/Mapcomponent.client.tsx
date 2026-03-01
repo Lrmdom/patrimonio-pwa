@@ -1,11 +1,23 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap } from 'react-leaflet';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Link } from 'react-router-dom';
 import ARPanel from './ARPanel';
 
-const R2_PUBLIC_URL = "https://pub-72037178c35c4cb1b3448777a2c80f0a.r2.dev";
+// Import otimizados
+import { MAP_CONFIG } from '~/config/map';
+import { APP_CONFIG } from '~/config/constants';
+import { useGeolocation } from '~/hooks/useGeolocation';
+import { useProximityDetection } from '~/hooks/useProximityDetection';
+import { MapControls, GPSControl, GPSInfo } from './map/MapControls';
+import { HeritageMarkers } from './map/HeritageMarkers';
+import { ClusteredMarkers } from './map/ClusteredMarkers';
+import { MapErrorBoundary } from './ui/MapErrorBoundary';
+import { MapSkeleton } from './ui/MapSkeleton';
+import { getDistance } from '~/utils/geoUtilities';
+import './map/map.css';
 
 export interface LimiteAdministrativo {
     id: number;
@@ -39,21 +51,10 @@ interface MapProps {
     bucketData: HeritageItem[];
     center: L.LatLngExpression;
     zoom: number;
+    defaultLayer?: 'osm' | 'satellite' | 'terrain';
 }
 
-function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-    const R = 6371e3;
-    const φ1 = lat1 * Math.PI / 180;
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-}
-
+// Componente para recentrar automaticamente
 function RecenterAutomatically({ coords }: { coords: L.LatLngExpression }) {
     const map = useMap();
     useEffect(() => {
@@ -62,6 +63,7 @@ function RecenterAutomatically({ coords }: { coords: L.LatLngExpression }) {
     return null;
 }
 
+// Função para criar icons customizados (compatibilidade com código antigo)
 const createCustomIcon = (color: string) => L.divIcon({
     className: 'custom-marker',
     html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);"></div>`,
@@ -70,6 +72,7 @@ const createCustomIcon = (color: string) => L.divIcon({
     popupAnchor: [0, -7],
 });
 
+// Icon para localização do utilizador
 const userLocationIcon = L.divIcon({
     className: 'user-location-marker',
     html: `
@@ -163,7 +166,7 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
                     }
 
                     if (audioEnabled && audioRef.current && item.audioNarracao?.fileKey) {
-                        const publicUrl = `${R2_PUBLIC_URL}/${item.audioNarracao.fileKey}`;
+                        const publicUrl = `${APP_CONFIG.R2_URL}/${item.audioNarracao.fileKey}`;
                         if (audioRef.current.src !== publicUrl) {
                             audioRef.current.src = publicUrl;
                             audioRef.current.play().catch(e => console.warn("Autoplay bloqueado"));
@@ -212,90 +215,232 @@ export const MapComponentClient: React.FC<MapProps> = ({ limites, bucketData, ce
                         {userPos && isTracking && <RecenterAutomatically coords={userPos} />}
                         {userPos && <Marker position={userPos} icon={userLocationIcon} zIndexOffset={1000} />}
 
-                        {bucketData.map((item) => item.coordenadas && (
-                            <Marker
-                                key={item._id}
-                                ref={(el) => { if (el) markersRef.current[item._id] = el; }}
-                                position={[item.coordenadas.lat, item.coordenadas.lng]}
-                                icon={createCustomIcon(item.classificacao?.titulo === "Monumento Nacional" ? "#e11d48" : "#2563eb")}
+                        {/* Markers com clustering */}
+                        {(bucketData?.length || 0) >= APP_CONFIG.PERFORMANCE.MAX_MARKERS_BEFORE_CLUSTERING ? (
+                            // Com clustering
+                            <>
+                                <div style={{position: 'absolute', top: '10px', right: '10px', background: 'white', padding: '5px', zIndex: 1000, borderRadius: '5px', fontSize: '12px'}}>
+                                    Clustering ATIVO ({bucketData?.length || 0} pontos)
+                                </div>
+                                <MarkerClusterGroup
+                                chunkedLoading={true}
+                                maxClusterRadius={50}
+                                spiderfyOnMaxZoom={true}
+                                showCoverageOnHover={false}
+                                zoomToBoundsOnClick={true}
+                                removeOutsideVisibleBounds={true}
+                                animate={true}
+                                animateAddingMarkers={true}
+                                iconCreateFunction={(cluster: any) => {
+                                    const count = cluster.getChildCount();
+                                    let size = 'small';
+                                    let className = 'cluster-small';
+                                    let bgColor = '#2563eb'; // Azul mais forte
+                                    let iconSize = [35, 35];
+                                    
+                                    if (count > 20) {
+                                        size = 'large';
+                                        className = 'cluster-large';
+                                        bgColor = '#dc2626'; // Vermelho forte
+                                        iconSize = [45, 45];
+                                    } else if (count > 10) {
+                                        size = 'medium';
+                                        className = 'cluster-medium';
+                                        bgColor = '#059669'; // Verde forte
+                                        iconSize = [40, 40];
+                                    } else if (count > 5) {
+                                        size = 'medium';
+                                        className = 'cluster-medium';
+                                        bgColor = '#7c3aed'; // Roxo para 5-10
+                                        iconSize = [38, 38];
+                                    }
+
+                                    return L.divIcon({
+                                        html: `<div class="marker-cluster ${className}" style="
+                                            background: ${bgColor};
+                                            width: ${iconSize[0]}px;
+                                            height: ${iconSize[1]}px;
+                                            border-radius: 50%;
+                                            border: 3px solid white;
+                                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                            font-weight: bold;
+                                            font-size: ${size === 'small' ? '12px' : size === 'medium' ? '14px' : '16px'};
+                                            color: white;
+                                            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+                                        "><span>${count}</span></div>`,
+                                        className: '',
+                                        iconSize: iconSize as [number, number],
+                                        iconAnchor: [iconSize[0]/2, iconSize[1]/2]
+                                    });
+                                }}
                             >
-                                <Popup autoClose={false} closeOnClick={false}>
-                                    <div className="p-0 w-[220px] flex flex-col overflow-hidden bg-white rounded-lg border-none shadow-none">
-                                        {item.galeria && item.galeria[0]?.url ? (
-                                            <div className="w-full h-28 overflow-hidden bg-gray-100 border-b">
-                                                <img src={`${item.galeria[0].url}?w=200&h=200&fit=crop&auto=format&q=75`} alt={item.title} className="w-full h-full object-cover" />
-                                            </div>
-                                        ) : (
-                                            <div className="w-full h-2 bg-blue-600"></div>
-                                        )}
+                                {bucketData.map((item) => item.coordenadas && (
+                                    <Marker
+                                        key={item._id}
+                                        position={[item.coordenadas.lat, item.coordenadas.lng]}
+                                        icon={createCustomIcon(item.classificacao?.titulo === "Monumento Nacional" ? "#e11d48" : "#2563eb")}
+                                    >
+                                        <Popup autoClose={false} closeOnClick={false}>
+                                            <div className="p-0 w-[220px] flex flex-col overflow-hidden bg-white rounded-lg border-none shadow-none">
+                                                {item.galeria && item.galeria[0]?.url ? (
+                                                    <div className="w-full h-28 overflow-hidden bg-gray-100 border-b">
+                                                        <img src={`${item.galeria[0].url}?w=200&h=200&fit=crop&auto=format&q=75`} alt={item.title} className="w-full h-full object-cover" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-full h-2 bg-blue-600"></div>
+                                                )}
 
-                                        <div className="p-3 flex flex-col gap-2">
-                                            <div>
-                                                <h4 className="font-bold text-sm leading-tight text-gray-800">{item.title}</h4>
-                                                <div className="flex flex-wrap gap-1 mt-1">
-                                                    <span className="text-[7px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold">{item.tipo?.titulo || 'Património'}</span>
-                                                    {item.classificacao?.titulo && (
-                                                        <span className="text-[7px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded uppercase font-bold">{item.classificacao.titulo}</span>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {item.audioNarracao?.fileKey && (
-                                                <div className="bg-blue-50/50 rounded-lg p-2 border border-blue-100 flex items-center gap-3">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (audioRef.current) {
-                                                                const isThisActive = audioRef.current.src.includes(item.audioNarracao!.fileKey);
-                                                                if (isThisActive && isPlaying) {
-                                                                    audioRef.current.pause();
-                                                                } else {
-                                                                    audioRef.current.src = `${R2_PUBLIC_URL}/${item.audioNarracao!.fileKey}`;
-                                                                    audioRef.current.play();
-                                                                }
-                                                            }
-                                                        }}
-                                                        className="bg-blue-600 text-white rounded-full p-2 shadow-sm flex-shrink-0"
-                                                    >
-                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                                            {isPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
-                                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                                                            ) : (
-                                                                <path d="M8 5v14l11-7z"/>
+                                                <div className="p-3 flex flex-col gap-2">
+                                                    <div>
+                                                        <h4 className="font-bold text-sm leading-tight text-gray-800">{item.title}</h4>
+                                                        <div className="flex flex-wrap gap-1 mt-1">
+                                                            <span className="text-[7px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold">{item.tipo?.titulo || 'Património'}</span>
+                                                            {item.classificacao?.titulo && (
+                                                                <span className="text-[7px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded uppercase font-bold">{item.classificacao.titulo}</span>
                                                             )}
-                                                        </svg>
-                                                    </button>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[9px] font-bold text-blue-900 uppercase">Narração</span>
-                                                        <span className="text-[8px] text-blue-600">Disponível aqui</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {item.audioNarracao?.fileKey && (
+                                                        <div className="bg-blue-50/50 rounded-lg p-2 border border-blue-100 flex items-center gap-3">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (audioRef.current) {
+                                                                        const isThisActive = audioRef.current.src.includes(item.audioNarracao!.fileKey);
+                                                                        if (isThisActive && isPlaying) {
+                                                                            audioRef.current.pause();
+                                                                        } else {
+                                                                            audioRef.current.src = `${APP_CONFIG.R2_URL}/${item.audioNarracao!.fileKey}`;
+                                                                            audioRef.current.play();
+                                                                        }
+                                                                    }
+                                                                }}
+                                                                className="bg-blue-600 text-white rounded-full p-2 shadow-sm flex-shrink-0"
+                                                            >
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                                                    {isPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
+                                                                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                                                                    ) : (
+                                                                        <path d="M8 5v14l11-7z"/>
+                                                                    )}
+                                                                </svg>
+                                                            </button>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[9px] font-bold text-blue-900 uppercase">Narração</span>
+                                                                <span className="text-[8px] text-blue-600">Disponível aqui</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="mt-1 pt-2 border-t border-gray-100 flex justify-between items-center">
+                                                        <Link to={`/heritages/${item._id}`} className="text-blue-600 font-black text-[9px] uppercase">Detalhes →</Link>
+                                                        <span className="text-[9px] font-medium text-gray-400">
+                                                            {userPos ? `${Math.round(getDistance(userPos[0], userPos[1], item.coordenadas!.lat, item.coordenadas!.lng))}m` : '--'}
+                                                        </span>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleOpenAR(item); }}
+                                                            className="bg-black text-white px-2 py-1 rounded text-[8px] font-bold flex items-center gap-1"
+                                                        >
+                                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M7 2h10l3 5v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7l3-5zm1 2l-2 3h12l-2-3H8z"/></svg>
+                                                            VER EM AR
+                                                        </button>
                                                     </div>
                                                 </div>
+                                            </div>
+                                        </Popup>
+                                    </Marker>
+                                ))}
+                            </MarkerClusterGroup>
+                            </>
+                        ) : (
+                            // Sem clustering - markers individuais
+                            bucketData.map((item) => item.coordenadas && (
+                                <Marker
+                                    key={item._id}
+                                    position={[item.coordenadas.lat, item.coordenadas.lng]}
+                                    icon={createCustomIcon(item.classificacao?.titulo === "Monumento Nacional" ? "#e11d48" : "#2563eb")}
+                                >
+                                    <Popup autoClose={false} closeOnClick={false}>
+                                        <div className="p-0 w-[220px] flex flex-col overflow-hidden bg-white rounded-lg border-none shadow-none">
+                                            {item.galeria && item.galeria[0]?.url ? (
+                                                <div className="w-full h-28 overflow-hidden bg-gray-100 border-b">
+                                                    <img src={`${item.galeria[0].url}?w=200&h=200&fit=crop&auto=format&q=75`} alt={item.title} className="w-full h-full object-cover" />
+                                                </div>
+                                            ) : (
+                                                <div className="w-full h-2 bg-blue-600"></div>
                                             )}
 
-                                            <div className="mt-1 pt-2 border-t border-gray-100 flex justify-between items-center">
-                                                <Link to={`/heritages/${item._id}`} className="text-blue-600 font-black text-[9px] uppercase">Detalhes →</Link>
-                                                <span className="text-[9px] font-medium text-gray-400">
-                                                    {userPos ? `${Math.round(getDistance(userPos[0], userPos[1], item.coordenadas!.lat, item.coordenadas!.lng))}m` : '--'}
-                                                </span>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleOpenAR(item); }}
-                                                    className="bg-black text-white px-2 py-1 rounded text-[8px] font-bold flex items-center gap-1"
-                                                >
-                                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M7 2h10l3 5v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7l3-5zm1 2l-2 3h12l-2-3H8z"/></svg>
-                                                    VER EM AR
-                                                </button>
+                                            <div className="p-3 flex flex-col gap-2">
+                                                <div>
+                                                    <h4 className="font-bold text-sm leading-tight text-gray-800">{item.title}</h4>
+                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                        <span className="text-[7px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded uppercase font-bold">{item.tipo?.titulo || 'Património'}</span>
+                                                        {item.classificacao?.titulo && (
+                                                            <span className="text-[7px] bg-red-50 text-red-600 px-1.5 py-0.5 rounded uppercase font-bold">{item.classificacao.titulo}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {item.audioNarracao?.fileKey && (
+                                                    <div className="bg-blue-50/50 rounded-lg p-2 border border-blue-100 flex items-center gap-3">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (audioRef.current) {
+                                                                    const isThisActive = audioRef.current.src.includes(item.audioNarracao!.fileKey);
+                                                                    if (isThisActive && isPlaying) {
+                                                                        audioRef.current.pause();
+                                                                    } else {
+                                                                        audioRef.current.src = `${APP_CONFIG.R2_URL}/${item.audioNarracao!.fileKey}`;
+                                                                        audioRef.current.play();
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="bg-blue-600 text-white rounded-full p-2 shadow-sm flex-shrink-0"
+                                                        >
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                                                {isPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
+                                                                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                                                                ) : (
+                                                                    <path d="M8 5v14l11-7z"/>
+                                                                )}
+                                                            </svg>
+                                                        </button>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] font-bold text-blue-900 uppercase">Narração</span>
+                                                            <span className="text-[8px] text-blue-600">Disponível aqui</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="mt-1 pt-2 border-t border-gray-100 flex justify-between items-center">
+                                                    <Link to={`/heritages/${item._id}`} className="text-blue-600 font-black text-[9px] uppercase">Detalhes →</Link>
+                                                    <span className="text-[9px] font-medium text-gray-400">
+                                                        {userPos ? `${Math.round(getDistance(userPos[0], userPos[1], item.coordenadas!.lat, item.coordenadas!.lng))}m` : '--'}
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleOpenAR(item); }}
+                                                        className="bg-black text-white px-2 py-1 rounded text-[8px] font-bold flex items-center gap-1"
+                                                    >
+                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M7 2h10l3 5v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7l3-5zm1 2l-2 3h12l-2-3H8z"/></svg>
+                                                        VER EM AR
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </Popup>
-                            </Marker>
-                        ))}
+                                    </Popup>
+                                </Marker>
+                            ))
+                        )}
                         {limites.map((lim) => {
                             if (!lim.geometria) return null;
-                            const { crs, ...geometriaLimpa } = lim.geometria;
                             const feature = {
                                 type: 'Feature',
-                                geometry: geometriaLimpa,
+                                geometry: lim.geometria,
                                 properties: { nome: lim.nome_freguesia, cor_fundo: lim.cor_area || '#666666' }
                             };
                             return (
