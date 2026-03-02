@@ -158,6 +158,8 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [visibleTypes, setVisibleTypes] = useState<Set<string>>(new Set(Object.keys(heritageIcons)));
     const [visiblePaths, setVisiblePaths] = useState<Set<string>>(new Set());
     const [routes, setRoutes] = useState<{ [key: string]: [number, number][] }>({});
+    const [routingProfile, setRoutingProfile] = useState('walking');
+    const [isRecalculatingRoutes, setIsRecalculatingRoutes] = useState(false);
     
     // Refs
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -307,10 +309,26 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         }
     }, [geolocation.position, proximityDetection]);
 
+    // Clear routes when profile changes
+    React.useEffect(() => {
+        setIsRecalculatingRoutes(true);
+        setRoutes({});
+    }, [routingProfile]);
+
     // Fetch routes along streets for visible paths
     React.useEffect(() => {
+        let pending = visiblePaths.size;
+        if (pending === 0) {
+            setIsRecalculatingRoutes(false);
+            return;
+        }
+        
         visiblePaths.forEach(async (tipo) => {
-            if (routes[tipo]) return; // already fetched
+            if (routes[tipo]) {
+                pending--;
+                if (pending === 0) setIsRecalculatingRoutes(false);
+                return; // already fetched
+            }
 
             const points = bucketData.filter(item => 
                 item.tipo?.titulo === tipo && 
@@ -318,7 +336,11 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 typeof item.coordenadas.lat === 'number' && 
                 typeof item.coordenadas.lng === 'number'
             );
-            if (points.length < 2) return;
+            if (points.length < 2) {
+                pending--;
+                if (pending === 0) setIsRecalculatingRoutes(false);
+                return;
+            }
 
             // sort by distance to gps
             const sortedPoints = points.sort((a, b) => {
@@ -334,7 +356,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 const response = await fetch('/api/route', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ coordinates: coords })
+                    body: JSON.stringify({ coordinates: coords, profile: routingProfile })
                 });
                 if (!response.ok) throw new Error('Proxy error');
                 const data = await response.json();
@@ -351,8 +373,10 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 const positions = sortedPoints.map(p => [p.coordenadas!.lat, p.coordenadas!.lng] as [number, number]);
                 setRoutes(prev => ({ ...prev, [tipo]: positions }));
             }
+            pending--;
+            if (pending === 0) setIsRecalculatingRoutes(false);
         });
-    }, [visiblePaths, bucketData, geolocation.position, routes]);
+    }, [visiblePaths, bucketData, geolocation.position, routes, routingProfile]);
 
     // Memoizar GeoJSON features
     const geoJSONFeatures = useMemo(() => {
@@ -373,14 +397,15 @@ export const MapcomponentClient: React.FC<MapProps> = ({
 
     // Memoizar polylines dos percursos
     const pathPolylines = useMemo(() => {
-        const polylines: React.ReactElement[] = [];
+        const elements: React.ReactElement[] = [];
         visiblePaths.forEach(tipo => {
             const routePositions = routes[tipo];
             if (!routePositions || routePositions.length < 2) return;
 
             const style = markerStyles[tipo] || markerStyles["Arquitetura Civil"];
 
-            polylines.push(
+            // Add polyline
+            elements.push(
                 <Polyline
                     key={`path-${tipo}`}
                     positions={routePositions}
@@ -390,8 +415,50 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                     dashArray="5,5"
                 />
             );
+
+            // Add direction arrows every 10 points
+            const arrowMarkers: React.ReactElement[] = [];
+            
+            // Function to calculate bearing from north
+            const getBearing = (startLat: number, startLng: number, destLat: number, destLng: number) => {
+                const dLon = (destLng - startLng) * Math.PI / 180;
+                const lat1 = startLat * Math.PI / 180;
+                const lat2 = destLat * Math.PI / 180;
+                const y = Math.sin(dLon) * Math.cos(lat2);
+                const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+                const bearing = Math.atan2(y, x) * 180 / Math.PI;
+                return (bearing + 360) % 360;
+            };
+            
+            for (let i = 1; i < routePositions.length; i += 30) {
+                const prev = routePositions[i - 1];
+                const curr = routePositions[i];
+                
+                // Calculate bearing from north
+                const bearing = getBearing(prev[0], prev[1], curr[0], curr[1]);
+                
+                arrowMarkers.push(
+                    <Marker
+                        key={`arrow-${tipo}-${i}`}
+                        position={curr}
+                        icon={L.divIcon({
+                            className: 'path-arrow-marker',
+                            html: `<div style="
+                                transform: rotate(${bearing}deg);
+                                font-size: 12px;
+                                color: white;
+                                text-shadow: 1px 1px 0px black, -1px -1px 0px black, 1px -1px 0px black, -1px 1px 0px black;
+                            ">▲</div>`,
+                            iconSize: [10, 10],
+                            iconAnchor: [5, 5]
+                        })}
+                        zIndexOffset={50}
+                    />
+                );
+            }
+            elements.push(...arrowMarkers);
         });
-        return polylines;
+        return elements;
     }, [visiblePaths, routes]);
 
     return (
@@ -704,6 +771,23 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                     {/* Legenda simples dos tipos de património */}
                     <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-3 z-[1000]">
                         <h4 className="text-xs font-bold text-deep-brown mb-2 uppercase">Tipos</h4>
+                        
+                        {/* Perfil de Roteamento */}
+                        <div className="mb-3">
+                            <label className="text-xs font-bold text-deep-brown mb-1 block">Perfil de Rota:</label>
+                            <select
+                                value={routingProfile}
+                                onChange={(e) => setRoutingProfile(e.target.value)}
+                                className="w-full px-2 py-1 text-xs bg-blue-50 border border-blue-300 rounded"
+                            >
+                                <option value="walking">🚶 Caminhar</option>
+                                <option value="cycling">🚴 Ciclismo</option>
+                                <option value="driving">🚗 Carro</option>
+                            </select>
+                            {isRecalculatingRoutes && (
+                                <div className="text-xs text-blue-600 mt-1">Recalculando rotas...</div>
+                            )}
+                        </div>
                         <div className="space-y-1">
                             {Object.entries(heritageIcons).map(([tipo, svg]) => {
                                 const style = markerStyles[tipo] || markerStyles["Arquitetura Civil"];

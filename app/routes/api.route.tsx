@@ -4,12 +4,13 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     const body = await request.json();
     const coordinates = body.coordinates; // array of [lng, lat]
+    const profile = body.profile || 'walking'; // default to walking
 
     // Build OSRM coordinate string: lng,lat;lng,lat
     const coordString = coordinates.map((c: number[]) => `${c[0]},${c[1]}`).join(';');
 
     const osrmResponse = await fetch(
-      `http://router.project-osrm.org/route/v1/driving/${coordString}?overview=full&geometries=geojson`
+      `http://router.project-osrm.org/route/v1/${profile}/${coordString}?overview=full&geometries=geojson`
     );
 
     if (!osrmResponse.ok) {
