@@ -8,4 +8,5 @@ export default [
   route("/enable-visual-editing", "routes/enable-visual-editing.tsx"),
   route("api/preview-mode/enable", "routes/api.preview-mode.enable.tsx"),
   route("api/preview-mode/disable", "routes/api.preview-mode.disable.tsx"),
+  route("api/route", "routes/api.route.tsx"),
 ] satisfies RouteConfig;

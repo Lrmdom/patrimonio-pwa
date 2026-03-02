@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Polyline, useMap } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -34,15 +34,15 @@ const heritageIcons: { [key: string]: string } = {
 
 const markerStyles: { [key: string]: { bg: string; stroke: string } } = {
   "Search list": { bg: "#3B82F6", stroke: "#FFFFFF" }, // blue-500
-  "Arquitetura Religiosa": { bg: "#1E40AF", stroke: "#FFFFFF" }, // blue-800
-  "Arquitetura Militar": { bg: "#1E3A8A", stroke: "#FFFFFF" }, // blue-900
-  "Arquitetura Civil": { bg: "#2563EB", stroke: "#FFFFFF" }, // blue-600
-  "Património Arqueológico": { bg: "#1D4ED8", stroke: "#FFFFFF" }, // blue-700
-  "Património Etnográfico": { bg: "#3B82F6", stroke: "#FFFFFF" }, // blue-500
-  "Património Industrial": { bg: "#1E3A8A", stroke: "#FFFFFF" }, // blue-900
-  "Coleção Museológica": { bg: "#2563EB", stroke: "#FFFFFF" }, // blue-600
-  "Escultura e Estatuária": { bg: "#1D4ED8", stroke: "#FFFFFF" }, // blue-700
-  "Festividade e Ritual": { bg: "#3B82F6", stroke: "#FFFFFF" }, // blue-500
+  "Arquitetura Religiosa": { bg: "#1E40AF", stroke: "#FF0000" }, // red
+  "Arquitetura Militar": { bg: "#1E3A8A", stroke: "#00FF00" }, // green
+  "Arquitetura Civil": { bg: "#2563EB", stroke: "#0000FF" }, // blue
+  "Património Arqueológico": { bg: "#1D4ED8", stroke: "#FFFF00" }, // yellow
+  "Património Etnográfico": { bg: "#3B82F6", stroke: "#FF00FF" }, // magenta
+  "Património Industrial": { bg: "#1E3A8A", stroke: "#00FFFF" }, // cyan
+  "Coleção Museológica": { bg: "#2563EB", stroke: "#FFA500" }, // orange
+  "Escultura e Estatuária": { bg: "#1D4ED8", stroke: "#800080" }, // purple
+  "Festividade e Ritual": { bg: "#3B82F6", stroke: "#FFC0CB" }, // pink
 };
 
 // Função para criar icons customizados
@@ -156,6 +156,8 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [audioEnabled, setAudioEnabled] = useState(false);
     const [activePopupId, setActivePopupId] = useState<string | null>(null);
     const [visibleTypes, setVisibleTypes] = useState<Set<string>>(new Set(Object.keys(heritageIcons)));
+    const [visiblePaths, setVisiblePaths] = useState<Set<string>>(new Set());
+    const [routes, setRoutes] = useState<{ [key: string]: [number, number][] }>({});
     
     // Refs
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -208,6 +210,19 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     // Função para alternar visibilidade dos tipos
     const toggleTypeVisibility = useCallback((tipo: string) => {
         setVisibleTypes(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(tipo)) {
+                newSet.delete(tipo);
+            } else {
+                newSet.add(tipo);
+            }
+            return newSet;
+        });
+    }, []);
+
+    // Função para alternar visibilidade dos percursos
+    const togglePathVisibility = useCallback((tipo: string) => {
+        setVisiblePaths(prev => {
             const newSet = new Set(prev);
             if (newSet.has(tipo)) {
                 newSet.delete(tipo);
@@ -292,6 +307,53 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         }
     }, [geolocation.position, proximityDetection]);
 
+    // Fetch routes along streets for visible paths
+    React.useEffect(() => {
+        visiblePaths.forEach(async (tipo) => {
+            if (routes[tipo]) return; // already fetched
+
+            const points = bucketData.filter(item => 
+                item.tipo?.titulo === tipo && 
+                item.coordenadas && 
+                typeof item.coordenadas.lat === 'number' && 
+                typeof item.coordenadas.lng === 'number'
+            );
+            if (points.length < 2) return;
+
+            // sort by distance to gps
+            const sortedPoints = points.sort((a, b) => {
+                if (!geolocation.position) return a.coordenadas!.lat - b.coordenadas!.lat; // fallback
+                const distA = getDistance(geolocation.position[0], geolocation.position[1], a.coordenadas!.lat, a.coordenadas!.lng);
+                const distB = getDistance(geolocation.position[0], geolocation.position[1], b.coordenadas!.lat, b.coordenadas!.lng);
+                return distA - distB;
+            });
+
+            const coords = sortedPoints.map(p => [p.coordenadas!.lng, p.coordenadas!.lat]); // [lng, lat]
+
+            try {
+                const response = await fetch('/api/route', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ coordinates: coords })
+                });
+                if (!response.ok) throw new Error('Proxy error');
+                const data = await response.json();
+                const geometry = data.features?.[0]?.geometry?.coordinates;
+                if (geometry) {
+                    const routeCoords: [number, number][] = geometry; // already [lat, lng] from backend
+                    setRoutes(prev => ({ ...prev, [tipo]: routeCoords }));
+                } else {
+                    throw new Error('No geometry');
+                }
+            } catch (e) {
+                console.warn('Route fetch failed for', tipo, e);
+                // fallback to straight line
+                const positions = sortedPoints.map(p => [p.coordenadas!.lat, p.coordenadas!.lng] as [number, number]);
+                setRoutes(prev => ({ ...prev, [tipo]: positions }));
+            }
+        });
+    }, [visiblePaths, bucketData, geolocation.position, routes]);
+
     // Memoizar GeoJSON features
     const geoJSONFeatures = useMemo(() => {
         return limites.map((lim) => {
@@ -308,6 +370,29 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             return feature;
         }).filter(Boolean);
     }, [limites]);
+
+    // Memoizar polylines dos percursos
+    const pathPolylines = useMemo(() => {
+        const polylines: React.ReactElement[] = [];
+        visiblePaths.forEach(tipo => {
+            const routePositions = routes[tipo];
+            if (!routePositions || routePositions.length < 2) return;
+
+            const style = markerStyles[tipo] || markerStyles["Arquitetura Civil"];
+
+            polylines.push(
+                <Polyline
+                    key={`path-${tipo}`}
+                    positions={routePositions}
+                    color={style.stroke}
+                    weight={3}
+                    opacity={0.8}
+                    dashArray="5,5"
+                />
+            );
+        });
+        return polylines;
+    }, [visiblePaths, routes]);
 
     return (
         <div className="relative w-full h-full border rounded-lg overflow-hidden bg-white shadow-xl" onClick={handleEnableAudio}>
@@ -611,6 +696,9 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                 />
                             )
                         ))}
+
+                        {/* Percursos dos tipos */}
+                        {pathPolylines}
                     </MapContainer>
                     
                     {/* Legenda simples dos tipos de património */}
@@ -621,21 +709,30 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                 const style = markerStyles[tipo] || markerStyles["Arquitetura Civil"];
                                 const isVisible = visibleTypes.has(tipo);
                                 return (
-                                    <div 
-                                        key={tipo} 
-                                        className={`flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors ${!isVisible ? 'opacity-50' : ''}`}
-                                        onClick={() => toggleTypeVisibility(tipo)}
-                                    >
-                                        <div className="w-5 h-5 flex items-center justify-center" style={{
-                                            backgroundColor: isVisible ? style.bg : '#e5e7eb',
-                                            width: '22px',
-                                            height: '22px',
-                                            borderRadius: '50%',
-                                            border: `2px solid ${isVisible ? style.stroke : '#9ca3af'}`,
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'center'
-                                        }} dangerouslySetInnerHTML={{ __html: svg }} />
+                                    <div key={tipo} className="flex items-center gap-2 text-xs p-1 rounded transition-colors">
+                                        <div className="flex flex-col items-center gap-1">
+                                            <div
+                                                className={`w-5 h-5 flex items-center justify-center cursor-pointer ${!isVisible ? 'opacity-50' : ''}`}
+                                                onClick={() => toggleTypeVisibility(tipo)}
+                                                style={{
+                                                    backgroundColor: isVisible ? style.bg : '#e5e7eb',
+                                                    width: '22px',
+                                                    height: '22px',
+                                                    borderRadius: '50%',
+                                                    border: `2px solid ${isVisible ? style.stroke : '#9ca3af'}`,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }} 
+                                                dangerouslySetInnerHTML={{ __html: svg }}
+                                            />
+                                            <button
+                                                onClick={() => togglePathVisibility(tipo)}
+                                                className={`px-1 py-0.5 text-[8px] rounded ${visiblePaths.has(tipo) ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
+                                            >
+                                                {visiblePaths.has(tipo) ? 'Percurso' : 'Traçar'}
+                                            </button>
+                                        </div>
                                         <span className={`text-gray-700 ${!isVisible ? 'line-through' : ''}`}>{tipo}</span>
                                     </div>
                                 );
