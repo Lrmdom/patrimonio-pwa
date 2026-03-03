@@ -192,6 +192,8 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [routes, setRoutes] = useState<{ [key: string]: [number, number][] }>({});
     const [routingProfile, setRoutingProfile] = useState('walking');
     const [isRecalculatingRoutes, setIsRecalculatingRoutes] = useState(false);
+    const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
+    const [isLegendOpen, setIsLegendOpen] = useState(false);
     
     // Refs
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -259,13 +261,19 @@ export const MapcomponentClient: React.FC<MapProps> = ({
 
     // Função para alternar visibilidade dos percursos
     const togglePathVisibility = useCallback((tipo: string) => {
+        console.log('togglePathVisibility called with:', tipo);
         setVisiblePaths(prev => {
             const newSet = new Set(prev);
-            if (newSet.has(tipo)) {
+            const wasVisible = newSet.has(tipo);
+            
+            if (wasVisible) {
                 newSet.delete(tipo);
             } else {
                 newSet.add(tipo);
+                setIsLoadingRoutes(true); // Mostrar loading quando adiciona novo percurso
+                console.log('Setting isLoadingRoutes to true for:', tipo);
             }
+            
             return newSet;
         });
     }, []);
@@ -355,13 +363,22 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         let pending = visiblePaths.size;
         if (pending === 0) {
             setIsRecalculatingRoutes(false);
+            setIsLoadingRoutes(false);
             return;
+        }
+        
+        // Se há percursos visíveis, mostrar loading
+        if (pending > 0) {
+            setIsLoadingRoutes(true);
         }
         
         visiblePaths.forEach(async (tipo) => {
             if (routes[tipo]) {
                 pending--;
-                if (pending === 0) setIsRecalculatingRoutes(false);
+                if (pending === 0) {
+                    setIsRecalculatingRoutes(false);
+                    setIsLoadingRoutes(false);
+                }
                 return; // already fetched
             }
 
@@ -373,7 +390,10 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             );
             if (points.length < 2) {
                 pending--;
-                if (pending === 0) setIsRecalculatingRoutes(false);
+                if (pending === 0) {
+                    setIsRecalculatingRoutes(false);
+                    setIsLoadingRoutes(false);
+                }
                 return;
             }
 
@@ -409,7 +429,10 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 setRoutes(prev => ({ ...prev, [tipo]: positions }));
             }
             pending--;
-            if (pending === 0) setIsRecalculatingRoutes(false);
+            if (pending === 0) {
+                setIsRecalculatingRoutes(false);
+                setIsLoadingRoutes(false);
+            }
         });
     }, [visiblePaths, bucketData, geolocation.position, routes, routingProfile]);
 
@@ -519,6 +542,21 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 </div>
 
                 <div className="relative flex-grow h-[70vh]">
+                    {/* Mensagem de carregamento de rotas - discreta */}
+                    {(() => {
+                        console.log('Loading states:', { isRecalculatingRoutes, isLoadingRoutes, visiblePathsSize: visiblePaths.size });
+                        return (isRecalculatingRoutes || isLoadingRoutes);
+                    })() && (
+                        <div className="absolute inset-0 flex items-center justify-center z-[1000]">
+                            <div className="bg-parchment/90 border border-deep-brown/20 rounded-lg shadow-md p-3 flex items-center gap-2 organic-shadow">
+                                <div className="animate-spin rounded-full h-4 w-4 border border-antique-gold/30 border-t-antique-gold"></div>
+                                <div className="text-xs font-serif text-deep-brown">
+                                    {isRecalculatingRoutes ? 'A recalcular percursos...' : 'A traçar rota...'}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <MapContainer 
                         center={center} 
                         zoom={zoom} 
@@ -866,61 +904,93 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         {pathPolylines}
                     </MapContainer>
                     
-                    {/* Legenda simples dos tipos de património */}
-                    <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-lg p-3 z-[1000]">
-                        <h4 className="text-xs font-bold text-deep-brown mb-2 uppercase">Tipos</h4>
-                        
-                        {/* Perfil de Roteamento */}
-                        <div className="mb-3">
-                            <label className="text-xs font-bold text-deep-brown mb-1 block">Perfil de Rota:</label>
-                            <select
-                                value={routingProfile}
-                                onChange={(e) => setRoutingProfile(e.target.value)}
-                                className="w-full px-2 py-1 text-xs bg-blue-50 border border-blue-300 rounded"
+                    {/* Legenda accordion dos tipos de património */}
+                    <div className="absolute bottom-4 left-4 bg-parchment border border-deep-brown/20 rounded-lg shadow-lg z-[1000] organic-shadow">
+                        {/* Header do accordion */}
+                        <button
+                            onClick={() => setIsLegendOpen(!isLegendOpen)}
+                            className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5 transition-colors rounded-t-lg"
+                        >
+                            <span className="text-xs font-serif font-bold text-deep-brown">Legenda do Mapa</span>
+                            <svg 
+                                className={`w-4 h-4 text-deep-brown transition-transform ${isLegendOpen ? 'rotate-180' : ''}`}
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24"
                             >
-                                <option value="walking">🚶 Caminhar</option>
-                                <option value="cycling">🚴 Ciclismo</option>
-                                <option value="driving">🚗 Carro</option>
-                            </select>
-                            {isRecalculatingRoutes && (
-                                <div className="text-xs text-blue-600 mt-1">Recalculando rotas...</div>
-                            )}
-                        </div>
-                        <div className="space-y-1">
-                            {Object.entries(heritageIcons).map(([englishKey, svg]) => {
-                                const style = markerStyles[englishKey] || markerStyles['civilArchitecture'];
-                                const isVisible = visibleTypes.has(englishKey);
-                                const translatedTitle = t(`heritageTypes.${englishKey}`);
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        
+                        {/* Conteúdo do accordion */}
+                        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isLegendOpen ? 'max-h-[500px]' : 'max-h-0'}`}>
+                            <div className="px-3 pb-3">
+                                {/* Perfil de Roteamento */}
+                                <div className="mb-3 pt-2">
+                                    <label className="text-xs font-serif font-bold text-deep-brown mb-1 block">Perfil de Rota:</label>
+                                    <select
+                                        value={routingProfile}
+                                        onChange={(e) => setRoutingProfile(e.target.value)}
+                                        className="w-full px-2 py-1 text-xs bg-cream/50 border border-deep-brown/30 rounded"
+                                    >
+                                        <option value="walking">🚶 Caminhar</option>
+                                        <option value="cycling">🚴 Ciclismo</option>
+                                        <option value="driving">🚗 Carro</option>
+                                    </select>
+                                    {isRecalculatingRoutes && (
+                                        <div className="text-xs text-olive mt-1">Recalculando rotas...</div>
+                                    )}
+                                </div>
                                 
-                                return (
-                                    <div key={englishKey} className="flex items-center gap-2 text-xs p-1 rounded transition-colors">
-                                        <div className="flex flex-col items-center gap-1">
-                                            <div
-                                                className={`w-5 h-5 flex items-center justify-center cursor-pointer ${!isVisible ? 'opacity-50' : ''}`}
-                                                onClick={() => toggleTypeVisibility(englishKey)}
-                                                style={{
-                                                    backgroundColor: isVisible ? style.bg : '#e5e7eb',
-                                                    width: '22px',
-                                                    height: '22px',
-                                                    borderRadius: '50%',
-                                                    border: `2px solid ${isVisible ? style.stroke : '#9ca3af'}`,
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center'
-                                                }} 
-                                                dangerouslySetInnerHTML={{ __html: svg }}
-                                            />
-                                            <button
-                                                onClick={() => togglePathVisibility(translatedTitle)}
-                                                className={`px-1 py-0.5 text-[8px] rounded ${visiblePaths.has(translatedTitle) ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
-                                            >
-                                                {visiblePaths.has(translatedTitle) ? 'Percurso' : 'Traçar'}
-                                            </button>
-                                        </div>
-                                        <span className={`text-gray-700 ${!isVisible ? 'line-through' : ''}`}>{translatedTitle}</span>
-                                    </div>
-                                );
-                            })}
+                                {/* Tipos de Património */}
+                                <div className="space-y-1">
+                                    {Object.entries(heritageIcons).map(([englishKey, svg]) => {
+                                        const style = markerStyles[englishKey] || markerStyles['civilArchitecture'];
+                                        const isVisible = visibleTypes.has(englishKey);
+                                        const translatedTitle = t(`heritageTypes.${englishKey}`);
+                                        
+                                        return (
+                                            <div key={englishKey} className="flex items-center gap-2 text-xs p-1 rounded transition-colors hover:bg-deep-brown/5">
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <div
+                                                        className={`w-5 h-5 flex items-center justify-center cursor-pointer ${!isVisible ? 'opacity-50' : ''}`}
+                                                        onClick={() => toggleTypeVisibility(englishKey)}
+                                                        style={{
+                                                            backgroundColor: isVisible ? style.bg : '#e5e7eb',
+                                                            width: '22px',
+                                                            height: '22px',
+                                                            borderRadius: '50%',
+                                                            border: `2px solid ${isVisible ? style.stroke : '#9ca3af'}`,
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center'
+                                                        }} 
+                                                        dangerouslySetInnerHTML={{ __html: svg }}
+                                                    />
+                                                    <button
+                                                        onClick={() => togglePathVisibility(translatedTitle)}
+                                                        className={`w-7 h-7 flex items-center justify-center text-[8px] rounded ${visiblePaths.has(translatedTitle) ? 'bg-olive text-white' : 'bg-cream/50 text-deep-brown'}`}
+                                                        title={visiblePaths.has(translatedTitle) ? 'Ocultar percurso' : 'Mostrar percurso'}
+                                                    >
+                                                        {visiblePaths.has(translatedTitle) ? (
+                                                            // Ícone de direções ativas (estilo Google Maps)
+                                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                                                <path d="M21.71 11.29l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.38.39-1.01 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/>
+                                                            </svg>
+                                                        ) : (
+                                                            // Ícone de direções inativo (estilo Google Maps)
+                                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                                <path d="M21.71 11.29l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.38.39-1.01 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/>
+                                                            </svg>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                                <span className={`text-deep-brown ${!isVisible ? 'line-through opacity-50' : ''}`}>{translatedTitle}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
