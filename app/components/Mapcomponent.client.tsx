@@ -10,6 +10,7 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Link } from 'react-router-dom';
 import ARPanel from './ARPanel';
+import { useTranslation } from 'react-i18next';
 
 // Import otimizados
 import { MAP_CONFIG } from '~/config/map';
@@ -19,37 +20,11 @@ import { useProximityDetection } from '~/hooks/useProximityDetection';
 import { getDistance } from '~/utils/geoUtilities';
 import './map/map.css';
 
-// Ícones customizados para tipos de património
-const heritageIcons: { [key: string]: string } = {
-  "Arquitetura Religiosa": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M10 22V8h4v14h-4zm-2 0V6h8v16H8z"/><path d="M12 6V2l3 4h-6z"/><circle cx="12" cy="12" r="1"/></svg>`,
-  "Arquitetura Militar": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M3 21V8h2V6h2V8h2V6h2V8h2V6h2V8h2V6h2V8h2v13H3z"/><path d="M7 12h2v2H7v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/><path d="M5 10h2v2H5v-2zm4 0h2v2H9v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/></svg>`,
-  "Arquitetura Civil": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M4 6l2 2h2l-1 3h2l1 3h2l1-3h2l-1-3h2l2-2h-2l-1-2h-2l-1 2H9l-1-2H6l-1 2H4z"/></svg>`,
-  "Património Arqueológico": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
-  "Património Etnográfico": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>`,
-  "Património Industrial": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
-  "Coleção Museológica": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
-  "Escultura e Estatuária": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2c-1 0-1.5 .5-1.5 1.5v1.5c0 .5 .5 1 1 1s1-.5 1-1V4c0-.5-.5-1-1-1zM10 6v5c0 .5 .5 1 1 1h0.5v-6H10zM14 6v5c0 .5-.5 1-1 1h-0.5v-6H14zM11.5 12v4c0 .5 .5 1 1 1s1-.5 1-1v-4H11.5zM9.5 13v3c0 .5 .5 1 1 1h0.5v-4H9.5zM15.5 13v3c0 .5-.5 1-1 1h-0.5v-4H15.5z"/></svg>`,
-  "Festividade e Ritual": `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
-};
-
-const markerStyles: { [key: string]: { bg: string; stroke: string } } = {
-  "Search list": { bg: "#3B82F6", stroke: "#FFFFFF" }, // blue-500
-  "Arquitetura Religiosa": { bg: "#1E40AF", stroke: "#FF0000" }, // red
-  "Arquitetura Militar": { bg: "#1E3A8A", stroke: "#00FF00" }, // green
-  "Arquitetura Civil": { bg: "#2563EB", stroke: "#0000FF" }, // blue
-  "Património Arqueológico": { bg: "#1D4ED8", stroke: "#FFFF00" }, // yellow
-  "Património Etnográfico": { bg: "#3B82F6", stroke: "#FF00FF" }, // magenta
-  "Património Industrial": { bg: "#1E3A8A", stroke: "#00FFFF" }, // cyan
-  "Coleção Museológica": { bg: "#2563EB", stroke: "#FFA500" }, // orange
-  "Escultura e Estatuária": { bg: "#1D4ED8", stroke: "#800080" }, // purple
-  "Festividade e Ritual": { bg: "#3B82F6", stroke: "#FFC0CB" }, // pink
-};
-
 // Função para criar icons customizados
-const createCustomIcon = (tipo: string | undefined) => {
-  const tipoKey = tipo || 'Arquitetura Civil';
-  const iconSvg = heritageIcons[tipoKey] || heritageIcons['Arquitetura Civil'];
-  const style = markerStyles[tipoKey] || markerStyles['Arquitetura Civil'];
+const createCustomIcon = (tipo: string | undefined, heritageIcons: { [key: string]: string }, markerStyles: { [key: string]: { bg: string; stroke: string } }, defaultKey: string) => {
+  const tipoKey = tipo || defaultKey;
+  const iconSvg = heritageIcons[tipoKey] || heritageIcons[defaultKey];
+  const style = markerStyles[tipoKey] || markerStyles[defaultKey];
   
   return L.divIcon({
     className: 'custom-heritage-marker',
@@ -97,6 +72,7 @@ interface MapProps {
     center: L.LatLngExpression;
     zoom: number;
     defaultLayer?: 'osm' | 'satellite' | 'terrain';
+    locale?: string;
 }
 
 // Componente para controlar popups no nível do mapa
@@ -129,8 +105,41 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     bucketData, 
     center, 
     zoom, 
-    defaultLayer = 'osm' 
+    defaultLayer = 'osm',
+    locale
 }) => {
+    // Translation hook
+    const { t } = useTranslation();
+
+    // Translated keys for heritage types
+    const defaultTypeKey = t("heritageTypes.civilArchitecture");
+
+    // Ícones customizados para tipos de património (translated)
+    const heritageIcons = useMemo(() => ({
+        [t("heritageTypes.religiousArchitecture")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M10 22V8h4v14h-4zm-2 0V6h8v16H8z"/><path d="M12 6V2l3 4h-6z"/><circle cx="12" cy="12" r="1"/></svg>`,
+        [t("heritageTypes.militaryArchitecture")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M3 21V8h2V6h2V8h2V6h2V8h2V6h2V8h2V6h2V8h2v13H3z"/><path d="M7 12h2v2H7v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/><path d="M5 10h2v2H5v-2zm4 0h2v2H9v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/></svg>`,
+        [t("heritageTypes.civilArchitecture")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M4 6l2 2h2l-1 3h2l1 3h2l1-3h2l-1-3h2l2-2h-2l-1-2h-2l-1 2H9l-1-2H6l-1 2H4z"/></svg>`,
+        [t("heritageTypes.archaeologicalHeritage")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+        [t("heritageTypes.ethnographicHeritage")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>`,
+        [t("heritageTypes.industrialHeritage")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+        [t("heritageTypes.museumCollection")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
+        [t("heritageTypes.sculptureAndStatuary")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2c-1 0-1.5 .5-1.5 1.5v1.5c0 .5 .5 1 1 1s1-.5 1-1V4c0-.5-.5-1-1-1zM10 6v5c0 .5 .5 1 1 1h0.5v-6H10zM14 6v5c0 .5-.5 1-1 1h-0.5v-6H14zM11.5 12v4c0 .5 .5 1 1 1s1-.5 1-1v-4H11.5zM9.5 13v3c0 .5 .5 1 1 1h0.5v-4H9.5zM15.5 13v3c0 .5-.5 1-1 1h-0.5v-4H15.5z"/></svg>`,
+        [t("heritageTypes.festivityAndRitual")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+    }), [t]);
+
+    const markerStyles = useMemo(() => ({
+        "Search list": { bg: "#3B82F6", stroke: "#FFFFFF" }, // blue-500
+        [t("heritageTypes.religiousArchitecture")]: { bg: "#1E40AF", stroke: "#FF0000" }, // red
+        [t("heritageTypes.militaryArchitecture")]: { bg: "#1E3A8A", stroke: "#00FF00" }, // green
+        [t("heritageTypes.civilArchitecture")]: { bg: "#2563EB", stroke: "#0000FF" }, // blue
+        [t("heritageTypes.archaeologicalHeritage")]: { bg: "#1D4ED8", stroke: "#FFFF00" }, // yellow
+        [t("heritageTypes.ethnographicHeritage")]: { bg: "#3B82F6", stroke: "#FF00FF" }, // magenta
+        [t("heritageTypes.industrialHeritage")]: { bg: "#1E3A8A", stroke: "#00FFFF" }, // cyan
+        [t("heritageTypes.museumCollection")]: { bg: "#2563EB", stroke: "#FFA500" }, // orange
+        [t("heritageTypes.sculptureAndStatuary")]: { bg: "#1D4ED8", stroke: "#800080" }, // purple
+        [t("heritageTypes.festivityAndRitual")]: { bg: "#3B82F6", stroke: "#FFC0CB" }, // pink
+    }), [t]);
+
     // User location icon memoizado (agora dentro do componente)
     const userLocationIcon = useMemo(() => L.divIcon({
         className: 'user-location-marker',
@@ -149,7 +158,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         popupAnchor: [0, -15]
     }), []);
     // States
-    const [isTracking, setIsTracking] = useState(true);
+    const [isTracking, setIsTracking] = useState(false);
     const [activeARItem, setActiveARItem] = useState<HeritageItem | null>(null);
     const [isAudioPlaying, setIsAudioPlaying] = useState(false);
     const [currentAudioId, setCurrentAudioId] = useState<string | null>(null);
@@ -519,7 +528,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         {(bucketData?.length || 0) >= 10 ? (
                             // Com clustering
                             <>
-                                <div style={{position: 'absolute', top: '10px', right: '10px', background: 'white', padding: '5px', zIndex: 1000, borderRadius: '5px', fontSize: '12px'}}>
+                                <div style={{position: 'absolute', top: '10px', right: '10px', background: 'white', padding: '5px', zIndex: 1000, borderRadius: '5px', fontSize: '12px', pointerEvents: 'none'}}>
                                     Clustering ATIVO ({bucketData?.length || 0} pontos)
                                 </div>
                                 <MarkerClusterGroup
@@ -570,13 +579,13 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                 }}
                             >
                                 {bucketData.filter((item) => {
-    const tipo = item.tipo?.titulo || 'Arquitetura Civil';
+    const tipo = item.tipo?.titulo || defaultTypeKey;
     return item.coordenadas && visibleTypes.has(tipo);
 }).map((item) => (
                             <Marker
                                 key={item._id}
                                 position={[item.coordenadas.lat, item.coordenadas.lng]}
-                                icon={createCustomIcon(item.tipo?.titulo || 'Arquitetura Civil')}
+                                icon={createCustomIcon(item.tipo?.titulo, heritageIcons, markerStyles, defaultTypeKey)}
                                 ref={(ref) => {
                                     if (ref) {
                                         markersRef.current[item._id] = ref as any;
@@ -663,11 +672,19 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                             </>
                         ) : (
                             // Sem clustering - markers individuais
-                            bucketData.map((item) => item.coordenadas && (
+                            bucketData.filter((item) => {
+                                const tipo = item.tipo?.titulo || defaultTypeKey;
+                                return item.coordenadas && visibleTypes.has(tipo);
+                            }).map((item) => (
                                 <Marker
                                     key={item._id}
-                                    position={[item.coordenadas.lat, item.coordenadas.lng]}
-                                    icon={createCustomIcon(item.tipo?.titulo || 'Arquitetura Civil')}
+                                    position={[item.coordenadas!.lat, item.coordenadas!.lng]}
+                                    icon={createCustomIcon(item.tipo?.titulo, heritageIcons, markerStyles, defaultTypeKey)}
+                                    ref={(ref) => {
+                                        if (ref) {
+                                            markersRef.current[item._id] = ref as any;
+                                        }
+                                    }}
                                     eventHandlers={{
                                         click: () => {
                                             handlePopupOpen(item._id);
@@ -790,7 +807,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         </div>
                         <div className="space-y-1">
                             {Object.entries(heritageIcons).map(([tipo, svg]) => {
-                                const style = markerStyles[tipo] || markerStyles["Arquitetura Civil"];
+                                const style = markerStyles[tipo] || markerStyles[defaultTypeKey];
                                 const isVisible = visibleTypes.has(tipo);
                                 return (
                                     <div key={tipo} className="flex items-center gap-2 text-xs p-1 rounded transition-colors">
