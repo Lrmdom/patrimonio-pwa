@@ -22,10 +22,10 @@ export async function getGCSStorageClient(): Promise<Storage> {
     if (process.env.K_SERVICE || process.env.NODE_ENV === "production") {
         console.log("Initializing GCS Storage for production (Default Application Credentials).");
         storage = new Storage({projectId: GOOGLE_CLOUD_PROJECT_ID});
-    } else if (GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+    } else if (GOOGLE_APPLICATION_CREDENTIALS_JSON && GOOGLE_APPLICATION_CREDENTIALS_JSON.startsWith('{')) {
         try {
-            const credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS_JSON);
-            storage = new Storage({
+const credentials = JSON.parse(GOOGLE_APPLICATION_CREDENTIALS_JSON);
+storage = new Storage({
                 projectId: credentials.project_id || GOOGLE_CLOUD_PROJECT_ID,
                 credentials: {
                     client_email: credentials.client_email,
@@ -34,9 +34,7 @@ export async function getGCSStorageClient(): Promise<Storage> {
             });
             console.log("Google Cloud Storage client initialized with JSON credentials from ENV.");
         } catch (e) {
-            console.error("Failed to parse GOOGLE_APPLICATION_CREDENTIALS_JSON:", e);
-            // Fallback
-            storage = new Storage({projectId: GOOGLE_CLOUD_PROJECT_ID});
+            console.error("Erro ao processar JSON de credenciais. Verifique se a string é um JSON válido.");
         }
     } else if (GOOGLE_CLOUD_KEY_FILE_PATH) {
         try {
