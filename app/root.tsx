@@ -22,16 +22,31 @@ import { LanguageSwitcher } from "~/components/LanguageSwitcher";
 
 /**
  * Detecta a linguagem preferencial do utilizador através dos headers do browser.
+ * NOTA: No cliente, o locale vem do localStorage; no servidor, vem dos headers.
  */
 function getServerLanguage(request: Request): string {
-  const acceptLanguage = request.headers.get('accept-language');
-  if (acceptLanguage) {
-    const primaryLang = acceptLanguage.split(',')[0].split('-')[0];
-    if (['en', 'pt', 'es'].includes(primaryLang)) {
-      return primaryLang;
+  // No servidor, usar headers
+  if (typeof window === 'undefined') {
+    const acceptLanguage = request.headers.get('accept-language');
+    if (acceptLanguage) {
+      const primaryLang = acceptLanguage.split(',')[0].split('-')[0];
+      if (['en', 'pt', 'es'].includes(primaryLang)) {
+        return primaryLang;
+      }
     }
+    return 'en';
   }
-  return 'en';
+  
+  // No cliente (se chamado), usar localStorage
+  const savedLang = typeof localStorage !== 'undefined' 
+    ? localStorage.getItem('i18n_language') 
+    : null;
+  
+  if (savedLang && ['en', 'pt', 'es'].includes(savedLang)) {
+    return savedLang;
+  }
+  
+  return 'pt';
 }
 
 /**
@@ -44,12 +59,19 @@ export const loader = async ({ request, params }: any) => {
 
   // 2. Determina o locale (prioridade: params da URL > header > fallback 'pt')
   let locale = params.locale || getServerLanguage(request) || 'pt';
+  
+  console.log('🌍 Locale determination:');
+  console.log('  - params.locale:', params.locale);
+  console.log('  - header language:', getServerLanguage(request));
+  console.log('  - final locale:', locale);
 
   // 3. Obtém dados do preview mode do Sanity
   const { preview } = await getPreviewData(request);
 
   const GCS_BUCKET_NAME = "heritage-sanity-json-data";
   const GCS_DATA_FILE_NAME = `heritage-sanity-data-${locale}.json`;
+
+  console.log('📁 GCS: Loading file:', GCS_DATA_FILE_NAME, 'for locale:', locale);
 
   let bucketData = null;
 

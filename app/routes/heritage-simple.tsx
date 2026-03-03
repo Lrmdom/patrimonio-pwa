@@ -16,7 +16,6 @@ import { useTranslation } from 'react-i18next';
 interface BemCultural {
   _id: string;
   _type: string;
-  designacao?: string;
   title?: string;
   descricao?: string;
   codigoInventario?: string;
@@ -41,9 +40,9 @@ interface BemCultural {
 // Query GROQ para buscar bens culturais (com correção para arrays internacionalizados)
 const BENS_CULTURAIS_QUERY = `
   *[_type == "bemCultural"] | order(_createdAt desc) {
-    _id, _type, designacao,
+    _id, _type,
     // Busca o valor em 'pt' no array internacionalizado para evitar erro React
-    "title": coalesce(title[_key == "pt"][0].value, designacao, "Sem título"),
+    "title": coalesce(title[_key == "pt"][0].value, "Sem título"),
     // Converte o conteúdo do bloco (Portable Text) para texto simples
     "descricao": coalesce(pt::text(descricao[_key == "pt"][0].value), ""),
     codigoInventario, tipo->{_type, title},
@@ -134,7 +133,7 @@ export default function HeritageSimplePage() {
                 <div key={item._id} className="p-6 hover:bg-parchment/30 transition-colors">
                   <div>
                     <h3 className="text-lg historical-heading mb-2">
-                      {item.title || item.designacao || t('common.noTitle')}
+                      {item.title || t('common.noTitle')}
                     </h3>
                     
                     {item.tipo && (

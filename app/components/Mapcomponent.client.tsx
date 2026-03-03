@@ -1,10 +1,5 @@
-/**
- * Componente de mapa refatorado e otimizado
- * Usa hooks customizados, memoização e componentes modulares
- */
-
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Polyline, useMap } from 'react-leaflet';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, useMap, useMapEvents } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -16,6 +11,11 @@ import { MAP_CONFIG } from '~/config/map';
 import { APP_CONFIG } from '~/config/constants';
 import { useGeolocation } from '~/hooks/useGeolocation';
 import { useProximityDetection } from '~/hooks/useProximityDetection';
+import { MapControls, GPSControl, GPSInfo } from './map/MapControls';
+import { HeritageMarkers } from './map/HeritageMarkers';
+import { ClusteredMarkers } from './map/ClusteredMarkers';
+import { MapErrorBoundary } from './ui/MapErrorBoundary';
+import { MapSkeleton } from './ui/MapSkeleton';
 import { getDistance } from '~/utils/geoUtilities';
 import './map/map.css';
 
@@ -76,7 +76,7 @@ export interface LimiteAdministrativo {
 interface HeritageItem {
     _id: string;
     title: string;
-    coordenadas?: { lat: number; lng: number } | null;
+    coordenadas: { lat: number; lng: number } | null;
     tipo?: { titulo: string };
     classificacao?: { titulo: string };
     audioNarracao?: {
@@ -559,7 +559,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                             align-items: center;
                                             justify-content: center;
                                             font-weight: bold;
-                                            font-size: 12px;
+                                            font-size: ${size === 'small' ? '12px' : size === 'medium' ? '14px' : '16px'};
                                             color: white;
                                             text-shadow: 0 1px 2px rgba(0,0,0,0.3);
                                         "><span>${count}</span></div>`,

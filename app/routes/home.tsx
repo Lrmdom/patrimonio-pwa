@@ -29,6 +29,7 @@ export function Home() {
     const { limites } = useLoaderData<typeof loader>();
     const rootData = useRouteLoaderData("root") as any;
     const bucketData = rootData?.bucketData;
+    const locale = rootData?.locale || 'pt';
     const [isClient, setIsClient] = useState(false);
 
     useEffect(() => {
@@ -51,6 +52,7 @@ export function Home() {
                                 limites={limites}
                                 center={TAVIRA_CENTER}
                                 zoom={INITIAL_ZOOM}
+                                locale={locale}
                             />
                         </div>
                     </Suspense>

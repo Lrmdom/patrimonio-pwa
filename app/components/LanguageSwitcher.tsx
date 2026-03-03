@@ -15,9 +15,16 @@ export function LanguageSwitcher() {
   const currentLanguage = languages.find(lang => lang.code === i18n.language) || languages[0];
 
   const handleLanguageChange = (langCode: string) => {
+    console.log('🔄 Language change requested:', langCode);
     i18n.changeLanguage(langCode);
     localStorage.setItem('i18n_language', langCode);
     setIsOpen(false);
+    
+    // Navegar para a nova rota com locale
+    const currentPath = window.location.pathname;
+    const newPath = `/${langCode}${currentPath.replace(/^\/(en|pt|es|fr)/, '') || ''}`;
+    console.log('🔄 Navigating to:', newPath);
+    window.location.href = newPath;
   };
 
   useEffect(() => {

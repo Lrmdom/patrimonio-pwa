@@ -1,6 +1,9 @@
-import {type RouteConfig, index, route} from "@react-router/dev/routes";
+import {type RouteConfig, index, route, layout} from "@react-router/dev/routes";
 
 export default [
+  layout("routes/locale-layout.tsx", [
+    route(":locale", "routes/locale.tsx"),
+  ]),
   index("routes/home.tsx"),
   route("/about", "routes/About.tsx"),
   route("/heritage-test", "routes/heritage-test.tsx"),

@@ -11,7 +11,6 @@ import { useTranslation } from 'react-i18next';
 interface BemCultural {
   _id: string;
   _type: string;
-  designacao?: string;
   title?: string;
   descricao?: string;
   codigoInventario?: string;
@@ -59,7 +58,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       *[_type == "bemCultural"] | order(_createdAt desc) {
         _id,
         _type,
-        designacao,
         title,
         descricao,
         codigoInventario,
@@ -270,7 +268,7 @@ export default function HeritageTestPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="text-lg font-semibold text-gray-900">
-                          {item.designacao || item.title || t('common.noTitle')}
+                          {item.title || t('common.noTitle')}
                         </h3>
                         {item.tipo && (
                           <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full">
