@@ -10,7 +10,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const coordString = coordinates.map((c: number[]) => `${c[0]},${c[1]}`).join(';');
 
     const osrmResponse = await fetch(
-      `http://router.project-osrm.org/route/v1/${profile}/${coordString}?overview=full&geometries=geojson`
+      `http://router.project-osrm.org/route/v1/${profile}/${coordString}?overview=full&geometries=geojson&steps=true`
     );
 
     if (!osrmResponse.ok) {

@@ -109,36 +109,59 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     locale
 }) => {
     // Translation hook
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
+
+    // Current language for audio
+    const currentLanguage = i18n.language;
+
+    // Reverse mapping from translated titles to English keys
+    const reverseHeritageTypes = useMemo(() => {
+        const map: { [key: string]: string } = {};
+        const types = [
+            'religiousArchitecture',
+            'militaryArchitecture',
+            'civilArchitecture',
+            'archaeologicalHeritage',
+            'ethnographicHeritage',
+            'industrialHeritage',
+            'museumCollection',
+            'sculptureAndStatuary',
+            'festivityAndRitual'
+        ];
+        types.forEach(key => {
+            map[t(`heritageTypes.${key}`)] = key;
+        });
+        return map;
+    }, [t]);
 
     // Translated keys for heritage types
     const defaultTypeKey = t("heritageTypes.civilArchitecture");
 
-    // Ícones customizados para tipos de património (translated)
+    // Custom icons for heritage types (using English keys for robustness)
     const heritageIcons = useMemo(() => ({
-        [t("heritageTypes.religiousArchitecture")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M10 22V8h4v14h-4zm-2 0V6h8v16H8z"/><path d="M12 6V2l3 4h-6z"/><circle cx="12" cy="12" r="1"/></svg>`,
-        [t("heritageTypes.militaryArchitecture")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M3 21V8h2V6h2V8h2V6h2V8h2V6h2V8h2V6h2V8h2v13H3z"/><path d="M7 12h2v2H7v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/><path d="M5 10h2v2H5v-2zm4 0h2v2H9v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/></svg>`,
-        [t("heritageTypes.civilArchitecture")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M4 6l2 2h2l-1 3h2l1 3h2l1-3h2l-1-3h2l2-2h-2l-1-2h-2l-1 2H9l-1-2H6l-1 2H4z"/></svg>`,
-        [t("heritageTypes.archaeologicalHeritage")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
-        [t("heritageTypes.ethnographicHeritage")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>`,
-        [t("heritageTypes.industrialHeritage")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
-        [t("heritageTypes.museumCollection")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
-        [t("heritageTypes.sculptureAndStatuary")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2c-1 0-1.5 .5-1.5 1.5v1.5c0 .5 .5 1 1 1s1-.5 1-1V4c0-.5-.5-1-1-1zM10 6v5c0 .5 .5 1 1 1h0.5v-6H10zM14 6v5c0 .5-.5 1-1 1h-0.5v-6H14zM11.5 12v4c0 .5 .5 1 1 1s1-.5 1-1v-4H11.5zM9.5 13v3c0 .5 .5 1 1 1h0.5v-4H9.5zM15.5 13v3c0 .5-.5 1-1 1h-0.5v-4H15.5z"/></svg>`,
-        [t("heritageTypes.festivityAndRitual")]: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
-    }), [t]);
+        religiousArchitecture: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M10 22V8h4v14h-4zm-2 0V6h8v16H8z"/><path d="M12 6V2l3 4h-6z"/><circle cx="12" cy="12" r="1"/></svg>`,
+        militaryArchitecture: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M3 21V8h2V6h2V8h2V6h2V8h2V6h2V8h2V6h2V8h2v13H3z"/><path d="M7 12h2v2H7v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/><path d="M5 10h2v2H5v-2zm4 0h2v2H9v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z"/></svg>`,
+        civilArchitecture: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M4 6l2 2h2l-1 3h2l1 3h2l1-3h2l-1-3h2l2-2h-2l-1-2h-2l-1 2H9l-1-2H6l-1 2H4z"/></svg>`,
+        archaeologicalHeritage: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+        ethnographicHeritage: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>`,
+        industrialHeritage: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1 1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+        museumCollection: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
+        sculptureAndStatuary: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2c-1 0-1.5 .5-1.5 1.5v1.5c0 .5 .5 1 1 1s1-.5 1-1V4c0-.5-.5-1-1-1zM10 6v5c0 .5 .5 1 1 1h0.5v-6H10zM14 6v5c0 .5-.5 1-1 1h-0.5v-6H14zM11.5 12v4c0 .5 .5 1 1 1s1-.5 1-1v-4H11.5zM9.5 13v3c0 .5 .5 1 1 1h0.5v-4H9.5zM15.5 13v3c0 .5-.5 1-1 1h-0.5v-4H15.5z"/></svg>`,
+        festivityAndRitual: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+    }), []);
 
-    const markerStyles = useMemo(() => ({
+    const markerStyles: { [key: string]: { bg: string; stroke: string } } = useMemo(() => ({
         "Search list": { bg: "#3B82F6", stroke: "#FFFFFF" }, // blue-500
-        [t("heritageTypes.religiousArchitecture")]: { bg: "#1E40AF", stroke: "#FF0000" }, // red
-        [t("heritageTypes.militaryArchitecture")]: { bg: "#1E3A8A", stroke: "#00FF00" }, // green
-        [t("heritageTypes.civilArchitecture")]: { bg: "#2563EB", stroke: "#0000FF" }, // blue
-        [t("heritageTypes.archaeologicalHeritage")]: { bg: "#1D4ED8", stroke: "#FFFF00" }, // yellow
-        [t("heritageTypes.ethnographicHeritage")]: { bg: "#3B82F6", stroke: "#FF00FF" }, // magenta
-        [t("heritageTypes.industrialHeritage")]: { bg: "#1E3A8A", stroke: "#00FFFF" }, // cyan
-        [t("heritageTypes.museumCollection")]: { bg: "#2563EB", stroke: "#FFA500" }, // orange
-        [t("heritageTypes.sculptureAndStatuary")]: { bg: "#1D4ED8", stroke: "#800080" }, // purple
-        [t("heritageTypes.festivityAndRitual")]: { bg: "#3B82F6", stroke: "#FFC0CB" }, // pink
-    }), [t]);
+        religiousArchitecture: { bg: "#1E40AF", stroke: "#FF0000" }, // red
+        militaryArchitecture: { bg: "#1E3A8A", stroke: "#00FF00" }, // green
+        civilArchitecture: { bg: "#2563EB", stroke: "#0000FF" }, // blue
+        archaeologicalHeritage: { bg: "#1D4ED8", stroke: "#FFFF00" }, // yellow
+        ethnographicHeritage: { bg: "#3B82F6", stroke: "#FF00FF" }, // magenta
+        industrialHeritage: { bg: "#1E3A8A", stroke: "#00FFFF" }, // cyan
+        museumCollection: { bg: "#2563EB", stroke: "#FFA500" }, // orange
+        sculptureAndStatuary: { bg: "#1D4ED8", stroke: "#800080" }, // purple
+        festivityAndRitual: { bg: "#3B82F6", stroke: "#FFC0CB" }, // pink
+    }), []);
 
     // User location icon memoizado (agora dentro do componente)
     const userLocationIcon = useMemo(() => L.divIcon({
@@ -184,6 +207,9 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     }, []);
 
     const handleAudioPlay = useCallback((item: HeritageItem) => {
+        const audioData = (item.audioNarracao as any)?.[currentLanguage];
+        if (!audioData) return;
+
         if (!audioRef.current) {
             audioRef.current = new Audio();
             audioRef.current.addEventListener('ended', () => {
@@ -195,7 +221,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         }
 
         const audio = audioRef.current;
-        const audioUrl = `${APP_CONFIG.R2_URL}/${item.audioNarracao!.fileKey}`;
+        const audioUrl = `${APP_CONFIG.R2_URL}/${audioData.fileKey}`;
 
         if (currentAudioId === item._id && isAudioPlaying) {
             audio.pause();
@@ -216,7 +242,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 setIsAudioPlaying(true);
             })
             .catch(error => console.warn('Autoplay blocked or error:', error));
-    }, [currentAudioId, isAudioPlaying]);
+    }, [currentAudioId, isAudioPlaying, currentLanguage]);
 
     // Função para alternar visibilidade dos tipos
     const toggleTypeVisibility = useCallback((tipo: string) => {
@@ -411,7 +437,8 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             const routePositions = routes[tipo];
             if (!routePositions || routePositions.length < 2) return;
 
-            const style = markerStyles[tipo] || markerStyles["Arquitetura Civil"];
+            const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
+            const style = markerStyles[englishKey] || markerStyles['civilArchitecture'];
 
             // Add polyline
             elements.push(
@@ -579,13 +606,17 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                 }}
                             >
                                 {bucketData.filter((item) => {
-    const tipo = item.tipo?.titulo || defaultTypeKey;
-    return item.coordenadas && visibleTypes.has(tipo);
-}).map((item) => (
-                            <Marker
-                                key={item._id}
-                                position={[item.coordenadas.lat, item.coordenadas.lng]}
-                                icon={createCustomIcon(item.tipo?.titulo, heritageIcons, markerStyles, defaultTypeKey)}
+                                    const tipo = item.tipo?.titulo || defaultTypeKey;
+                                    const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
+                                    return item.coordenadas && visibleTypes.has(englishKey);
+                                }).map((item) => {
+                                    const tipo = item.tipo?.titulo || defaultTypeKey;
+                                    const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
+                                    return (
+                                        <Marker
+                                            key={item._id}
+                                            position={[item.coordenadas!.lat, item.coordenadas!.lng]}
+                                icon={createCustomIcon(englishKey, heritageIcons, markerStyles, 'civilArchitecture')}
                                 ref={(ref) => {
                                     if (ref) {
                                         markersRef.current[item._id] = ref as any;
@@ -618,37 +649,59 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                 </div>
                                             </div>
 
-                                            {item.audioNarracao?.fileKey && (
-                                                <div className="bg-olive/10 rounded-lg p-1.5 border border-olive/20 flex items-center gap-2">
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (audioRef.current) {
-                                                                const isThisActive = audioRef.current.src.includes(item.audioNarracao!.fileKey);
-                                                                if (isThisActive && isAudioPlaying) {
-                                                                    audioRef.current.pause();
-                                                                } else {
-                                                                    audioRef.current.src = `${APP_CONFIG.R2_URL}/${item.audioNarracao!.fileKey}`;
-                                                                    audioRef.current.play();
+                                            {(() => {
+                                                const audioData = (item.audioNarracao as any)?.[currentLanguage];
+                                                return audioData && (
+                                                    <div className="bg-olive/10 rounded-lg p-1.5 border border-olive/20 flex items-center gap-2">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (!audioRef.current) {
+                                                                    audioRef.current = new Audio();
+                                                                    audioRef.current.addEventListener('ended', () => {
+                                                                        setIsAudioPlaying(false);
+                                                                        setCurrentAudioId(null);
+                                                                    });
+                                                                    audioRef.current.addEventListener('pause', () => setIsAudioPlaying(false));
+                                                                    audioRef.current.addEventListener('play', () => setIsAudioPlaying(true));
                                                                 }
-                                                            }
-                                                        }}
-                                                        className="bg-antique-gold text-deep-brown rounded-full p-2 shadow-sm flex-shrink-0 organic-border"
-                                                    >
-                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                                            {isAudioPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
-                                                                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                                                            ) : (
-                                                                <path d="M8 5v14l11-7z"/>
-                                                            )}
-                                                        </svg>
-                                                    </button>
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[9px] font-bold text-deep-brown uppercase">Narração</span>
-                                                        <span className="text-[8px] text-olive">Disponível aqui</span>
+                                                                const audio = audioRef.current;
+                                                                const audioUrl = `${APP_CONFIG.R2_URL}/${audioData.fileKey}`;
+                                                                console.log('Playing audio:', audioUrl);
+                                                                const isThisActive = audio.src.includes(audioData.fileKey);
+                                                                if (isThisActive && isAudioPlaying) {
+                                                                    audio.pause();
+                                                                    setCurrentAudioId(null);
+                                                                    setIsAudioPlaying(false);
+                                                                } else {
+                                                                    if (audio.src !== audioUrl) {
+                                                                        audio.src = audioUrl;
+                                                                    }
+                                                                    audio.play()
+                                                                        .then(() => {
+                                                                            setCurrentAudioId(item._id);
+                                                                            setIsAudioPlaying(true);
+                                                                        })
+                                                                        .catch(error => console.warn('Audio play failed:', error));
+                                                                }
+                                                            }}
+                                                            className="bg-antique-gold text-deep-brown rounded-full p-2 shadow-sm flex-shrink-0 organic-border"
+                                                        >
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                                                {isAudioPlaying && audioRef.current?.src.includes(audioData.fileKey) ? (
+                                                                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                                                                ) : (
+                                                                    <path d="M8 5v14l11-7z"/>
+                                                                )}
+                                                            </svg>
+                                                        </button>
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[9px] font-bold text-deep-brown uppercase">Narração</span>
+                                                            <span className="text-[8px] text-olive">Disponível aqui</span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
 
                                             <div className="mt-1 pt-1.5 border-t border-deep-brown/20 flex justify-between items-center">
                                                 <Link to={`/heritages/${item._id}`} className="text-antique-gold font-black text-[9px] uppercase hover:text-antique-gold/80">Detalhes →</Link>
@@ -667,19 +720,24 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                     </div>
                                 </Popup>
                             </Marker>
-                        ))}
+                                    );
+                                })}
                             </MarkerClusterGroup>
                             </>
                         ) : (
                             // Sem clustering - markers individuais
                             bucketData.filter((item) => {
                                 const tipo = item.tipo?.titulo || defaultTypeKey;
-                                return item.coordenadas && visibleTypes.has(tipo);
-                            }).map((item) => (
+                                const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
+                                return item.coordenadas && visibleTypes.has(englishKey);
+                            }).map((item) => {
+                                const tipo = item.tipo?.titulo || defaultTypeKey;
+                                const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
+                                return (
                                 <Marker
                                     key={item._id}
                                     position={[item.coordenadas!.lat, item.coordenadas!.lng]}
-                                    icon={createCustomIcon(item.tipo?.titulo, heritageIcons, markerStyles, defaultTypeKey)}
+                                    icon={createCustomIcon(englishKey, heritageIcons, markerStyles, 'civilArchitecture')}
                                     ref={(ref) => {
                                         if (ref) {
                                             markersRef.current[item._id] = ref as any;
@@ -712,37 +770,59 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                     </div>
                                                 </div>
 
-                                                {item.audioNarracao?.fileKey && (
-                                                    <div className="bg-olive/10 rounded-lg p-1.5 border border-olive/20 flex items-center gap-2">
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                if (audioRef.current) {
-                                                                    const isThisActive = audioRef.current.src.includes(item.audioNarracao!.fileKey);
-                                                                    if (isThisActive && isAudioPlaying) {
-                                                                        audioRef.current.pause();
-                                                                    } else {
-                                                                        audioRef.current.src = `${APP_CONFIG.R2_URL}/${item.audioNarracao!.fileKey}`;
-                                                                        audioRef.current.play();
+                                                {(() => {
+                                                    const audioData = (item.audioNarracao as any)?.[currentLanguage];
+                                                    return audioData && (
+                                                        <div className="bg-olive/10 rounded-lg p-1.5 border border-olive/20 flex items-center gap-2">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (!audioRef.current) {
+                                                                        audioRef.current = new Audio();
+                                                                        audioRef.current.addEventListener('ended', () => {
+                                                                            setIsAudioPlaying(false);
+                                                                            setCurrentAudioId(null);
+                                                                        });
+                                                                        audioRef.current.addEventListener('pause', () => setIsAudioPlaying(false));
+                                                                        audioRef.current.addEventListener('play', () => setIsAudioPlaying(true));
                                                                     }
-                                                                }
-                                                            }}
-                                                            className="bg-antique-gold text-deep-brown rounded-full p-2 shadow-sm flex-shrink-0 organic-border"
-                                                        >
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                                                                {isAudioPlaying && audioRef.current?.src.includes(item.audioNarracao.fileKey) ? (
-                                                                    <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-                                                                ) : (
-                                                                    <path d="M8 5v14l11-7z"/>
-                                                                )}
-                                                            </svg>
-                                                        </button>
-                                                        <div className="flex flex-col">
-                                                            <span className="text-[9px] font-bold text-deep-brown uppercase">Narração</span>
-                                                            <span className="text-[8px] text-olive">Disponível aqui</span>
+                                                                    const audio = audioRef.current;
+                                                                    const audioUrl = `${APP_CONFIG.R2_URL}/${audioData.fileKey}`;
+                                                                    console.log('Playing audio:', audioUrl);
+                                                                    const isThisActive = audio.src.includes(audioData.fileKey);
+                                                                    if (isThisActive && isAudioPlaying) {
+                                                                        audio.pause();
+                                                                        setCurrentAudioId(null);
+                                                                        setIsAudioPlaying(false);
+                                                                    } else {
+                                                                        if (audio.src !== audioUrl) {
+                                                                            audio.src = audioUrl;
+                                                                        }
+                                                                        audio.play()
+                                                                            .then(() => {
+                                                                                setCurrentAudioId(item._id);
+                                                                                setIsAudioPlaying(true);
+                                                                            })
+                                                                            .catch(error => console.warn('Audio play failed:', error));
+                                                                    }
+                                                                }}
+                                                                className="bg-antique-gold text-deep-brown rounded-full p-2 shadow-sm flex-shrink-0 organic-border"
+                                                            >
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                                                    {isAudioPlaying && audioRef.current?.src.includes(audioData.fileKey) ? (
+                                                                        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+                                                                    ) : (
+                                                                        <path d="M8 5v14l11-7z"/>
+                                                                    )}
+                                                                </svg>
+                                                            </button>
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[9px] font-bold text-deep-brown uppercase">Narração</span>
+                                                                <span className="text-[8px] text-olive">Disponível aqui</span>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                )}
+                                                    );
+                                                })()}
 
                                                 <div className="mt-1 pt-1.5 border-t border-deep-brown/20 flex justify-between items-center">
                                                     <Link to={`/heritages/${item._id}`} className="text-antique-gold font-black text-[9px] uppercase hover:text-antique-gold/80">Detalhes →</Link>
@@ -761,7 +841,8 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                         </div>
                                     </Popup>
                                 </Marker>
-                            ))
+                                );
+                            })
                         )}
 
                         {/* Limites administrativos */}
@@ -806,15 +887,17 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                             )}
                         </div>
                         <div className="space-y-1">
-                            {Object.entries(heritageIcons).map(([tipo, svg]) => {
-                                const style = markerStyles[tipo] || markerStyles[defaultTypeKey];
-                                const isVisible = visibleTypes.has(tipo);
+                            {Object.entries(heritageIcons).map(([englishKey, svg]) => {
+                                const style = markerStyles[englishKey] || markerStyles['civilArchitecture'];
+                                const isVisible = visibleTypes.has(englishKey);
+                                const translatedTitle = t(`heritageTypes.${englishKey}`);
+                                
                                 return (
-                                    <div key={tipo} className="flex items-center gap-2 text-xs p-1 rounded transition-colors">
+                                    <div key={englishKey} className="flex items-center gap-2 text-xs p-1 rounded transition-colors">
                                         <div className="flex flex-col items-center gap-1">
                                             <div
                                                 className={`w-5 h-5 flex items-center justify-center cursor-pointer ${!isVisible ? 'opacity-50' : ''}`}
-                                                onClick={() => toggleTypeVisibility(tipo)}
+                                                onClick={() => toggleTypeVisibility(englishKey)}
                                                 style={{
                                                     backgroundColor: isVisible ? style.bg : '#e5e7eb',
                                                     width: '22px',
@@ -828,13 +911,13 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                 dangerouslySetInnerHTML={{ __html: svg }}
                                             />
                                             <button
-                                                onClick={() => togglePathVisibility(tipo)}
-                                                className={`px-1 py-0.5 text-[8px] rounded ${visiblePaths.has(tipo) ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
+                                                onClick={() => togglePathVisibility(translatedTitle)}
+                                                className={`px-1 py-0.5 text-[8px] rounded ${visiblePaths.has(translatedTitle) ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
                                             >
-                                                {visiblePaths.has(tipo) ? 'Percurso' : 'Traçar'}
+                                                {visiblePaths.has(translatedTitle) ? 'Percurso' : 'Traçar'}
                                             </button>
                                         </div>
-                                        <span className={`text-gray-700 ${!isVisible ? 'line-through' : ''}`}>{tipo}</span>
+                                        <span className={`text-gray-700 ${!isVisible ? 'line-through' : ''}`}>{translatedTitle}</span>
                                     </div>
                                 );
                             })}
