@@ -193,7 +193,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [routingProfile, setRoutingProfile] = useState('walking');
     const [isRecalculatingRoutes, setIsRecalculatingRoutes] = useState(false);
     const [isLoadingRoutes, setIsLoadingRoutes] = useState(false);
-    const [isLegendOpen, setIsLegendOpen] = useState(false);
+    const [isLegendOpen, setIsLegendOpen] = useState(true);
     
     // Refs
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -367,11 +367,6 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             return;
         }
         
-        // Se há percursos visíveis, mostrar loading
-        if (pending > 0) {
-            setIsLoadingRoutes(true);
-        }
-        
         visiblePaths.forEach(async (tipo) => {
             if (routes[tipo]) {
                 pending--;
@@ -525,23 +520,8 @@ export const MapcomponentClient: React.FC<MapProps> = ({
 
             {/* O mapa é envolvido numa div que apenas ESCONDE (hidden) em vez de ser removida do DOM */}
             <div className={`w-full h-full flex flex-col ${activeARItem ? 'hidden' : 'block'}`}>
-                {/* Header com controls */}
-                <div className="p-3 bg-white border-b flex justify-end items-center z-[1]">
-                    <div className="flex items-center gap-4">
-                        <div className="flex flex-col">
-                            <span className="text-[10px] font-black text-blue-600 uppercase">GPS Ativo</span>
-                            <span className="text-xs text-gray-400">{geolocation.position ? "Sinal Estável" : "Localizando..."}</span>
-                        </div>
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setIsTracking(!isTracking); }}
-                            className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all ${isTracking ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}
-                        >
-                            {isTracking ? 'Seguir' : 'Livre'}
-                        </button>
-                    </div>
-                </div>
 
-                <div className="relative flex-grow h-[70vh]">
+                <div className="relative flex-grow">
                     {/* Mensagem de carregamento de rotas - discreta */}
                     {(() => {
                         console.log('Loading states:', { isRecalculatingRoutes, isLoadingRoutes, visiblePathsSize: visiblePaths.size });
@@ -589,60 +569,72 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                             />
                         )}
 
+                        {/* GPS controls overlay */}
+                        <div style={{position: 'absolute', top: '10px', right: '10px', background: 'white', padding: '5px', zIndex: 1000, borderRadius: '5px'}}>
+                            <div className="flex items-center gap-4">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black text-blue-600 uppercase">GPS Ativo</span>
+                                    <span className="text-xs text-gray-400">{geolocation.position ? "Sinal Estável" : "Localizando..."}</span>
+                                </div>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setIsTracking(!isTracking); }}
+                                    className={`px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all ${isTracking ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}
+                                >
+                                    {isTracking ? 'Seguir' : 'Livre'}
+                                </button>
+                            </div>
+                        </div>
+
                         {/* Markers com clustering ou individuais */}
                         {(bucketData?.length || 0) >= 10 ? (
                             // Com clustering
-                            <>
-                                <div style={{position: 'absolute', top: '10px', right: '10px', background: 'white', padding: '5px', zIndex: 1000, borderRadius: '5px', fontSize: '12px', pointerEvents: 'none'}}>
-                                    Clustering ATIVO ({bucketData?.length || 0} pontos)
-                                </div>
-                                <MarkerClusterGroup
-                                chunkedLoading={true}
-                                maxClusterRadius={50}
-                                spiderfyOnMaxZoom={true}
-                                showCoverageOnHover={false}
-                                zoomToBoundsOnClick={true}
-                                removeOutsideVisibleBounds={true}
-                                animate={true}
-                                animateAddingMarkers={true}
-                                iconCreateFunction={(cluster: any) => {
-                                    const count = cluster.getChildCount();
-                                    let bgColor = '#D4AF37'; // Antique gold
-                                    let iconSize = [35, 35];
-                                    
-                                    if (count > 20) {
-                                        bgColor = '#D2691E'; // Terracotta
-                                        iconSize = [45, 45];
-                                    } else if (count > 10) {
-                                        bgColor = '#556B2F'; // Olive
-                                        iconSize = [40, 40];
-                                    } else if (count > 5) {
-                                        bgColor = '#8B4513'; // Deep brown
-                                        iconSize = [38, 38];
-                                    }
+                            <MarkerClusterGroup
+                            chunkedLoading={true}
+                            maxClusterRadius={50}
+                            spiderfyOnMaxZoom={true}
+                            showCoverageOnHover={false}
+                            zoomToBoundsOnClick={true}
+                            removeOutsideVisibleBounds={true}
+                            animate={true}
+                            animateAddingMarkers={true}
+                            iconCreateFunction={(cluster: any) => {
+                                const count = cluster.getChildCount();
+                                let bgColor = '#D4AF37'; // Antique gold
+                                let iconSize = [35, 35];
+                                
+                                if (count > 20) {
+                                    bgColor = '#D2691E'; // Terracotta
+                                    iconSize = [45, 45];
+                                } else if (count > 10) {
+                                    bgColor = '#556B2F'; // Olive
+                                    iconSize = [40, 40];
+                                } else if (count > 5) {
+                                    bgColor = '#8B4513'; // Deep brown
+                                    iconSize = [38, 38];
+                                }
 
-                                    return L.divIcon({
-                                        html: `<div style="
-                                            background: ${bgColor};
-                                            width: ${iconSize[0]}px;
-                                            height: ${iconSize[1]}px;
-                                            border-radius: 50%;
-                                            border: 3px solid white;
-                                            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-                                            display: flex;
-                                            align-items: center;
-                                            justify-content: center;
-                                            font-weight: bold;
-                                            font-size: 12px;
-                                            color: white;
-                                            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-                                        "><span>${count}</span></div>`,
-                                        className: '',
-                                        iconSize: iconSize as [number, number],
-                                        iconAnchor: [iconSize[0]/2, iconSize[1]/2]
-                                    });
-                                }}
-                            >
+                                return L.divIcon({
+                                    html: `<div style="
+                                        background: ${bgColor};
+                                        width: ${iconSize[0]}px;
+                                        height: ${iconSize[1]}px;
+                                        border-radius: 50%;
+                                        border: 3px solid white;
+                                        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        font-weight: bold;
+                                        font-size: 12px;
+                                        color: white;
+                                        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+                                    "><span>${count}</span></div>`,
+                                    className: '',
+                                    iconSize: iconSize as [number, number],
+                                    iconAnchor: [iconSize[0]/2, iconSize[1]/2]
+                                });
+                            }}
+                        >
                                 {bucketData.filter((item) => {
                                     const tipo = item.tipo?.titulo || defaultTypeKey;
                                     const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
@@ -761,7 +753,6 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                     );
                                 })}
                             </MarkerClusterGroup>
-                            </>
                         ) : (
                             // Sem clustering - markers individuais
                             bucketData.filter((item) => {
@@ -903,94 +894,85 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         {/* Percursos dos tipos */}
                         {pathPolylines}
                     </MapContainer>
-                    
-                    {/* Legenda accordion dos tipos de património */}
-                    <div className="absolute bottom-4 left-4 bg-parchment border border-deep-brown/20 rounded-lg shadow-lg z-[1000] organic-shadow">
-                        {/* Header do accordion */}
-                        <button
-                            onClick={() => setIsLegendOpen(!isLegendOpen)}
-                            className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5 transition-colors rounded-t-lg"
-                        >
-                            <span className="text-xs font-serif font-bold text-deep-brown">Legenda do Mapa</span>
-                            <svg 
-                                className={`w-4 h-4 text-deep-brown transition-transform ${isLegendOpen ? 'rotate-180' : ''}`}
-                                fill="none" 
-                                stroke="currentColor" 
-                                viewBox="0 0 24 24"
+                </div>
+            </div>
+
+            {/* Legenda accordion dos tipos de património */}
+            <div className="absolute top-16 left-4 w-64 bg-parchment border border-deep-brown/20 rounded-lg shadow-lg z-[1000] organic-shadow">
+                {/* Header do accordion */}
+                <button
+                    onClick={() => setIsLegendOpen(!isLegendOpen)}
+                    className="w-full px-3 py-2.5 flex items-center justify-between hover:bg-deep-brown/5 transition-colors rounded-t-lg"
+                >
+                    <span className="text-xs font-serif font-bold text-deep-brown">
+                        {isLegendOpen ? 'Legenda do Mapa' : '📍 Mostrar Legenda'}
+                    </span>
+                    <svg 
+                        className={`w-4 h-4 text-deep-brown transition-transform ${isLegendOpen ? 'rotate-180' : ''}`}
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                </button>
+                
+                {/* Conteúdo do accordion */}
+                <div className={`transition-all duration-300 ease-in-out ${isLegendOpen ? 'max-h-[550px] overflow-y-auto opacity-100' : 'max-h-0 overflow-hidden opacity-0'}`}>
+                    <div className="px-3 pb-3">
+                        {/* Perfil de Roteamento */}
+                        <div className="mb-3 pt-2">
+                            <label className="text-xs font-serif font-bold text-deep-brown mb-1 block">Perfil de Rota:</label>
+                            <select
+                                value={routingProfile}
+                                onChange={(e) => setRoutingProfile(e.target.value)}
+                                className="w-full px-2 py-1 text-xs bg-cream/50 border border-deep-brown/30 rounded"
                             >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                        </button>
+                                <option value="walking">🚶 Caminhar</option>
+                                <option value="cycling">🚴 Ciclismo</option>
+                                <option value="driving">🚗 Carro</option>
+                            </select>
+                            {isRecalculatingRoutes && (
+                                <div className="text-xs text-olive mt-1">Recalculando rotas...</div>
+                            )}
+                        </div>
                         
-                        {/* Conteúdo do accordion */}
-                        <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isLegendOpen ? 'max-h-[500px]' : 'max-h-0'}`}>
-                            <div className="px-3 pb-3">
-                                {/* Perfil de Roteamento */}
-                                <div className="mb-3 pt-2">
-                                    <label className="text-xs font-serif font-bold text-deep-brown mb-1 block">Perfil de Rota:</label>
-                                    <select
-                                        value={routingProfile}
-                                        onChange={(e) => setRoutingProfile(e.target.value)}
-                                        className="w-full px-2 py-1 text-xs bg-cream/50 border border-deep-brown/30 rounded"
-                                    >
-                                        <option value="walking">🚶 Caminhar</option>
-                                        <option value="cycling">🚴 Ciclismo</option>
-                                        <option value="driving">🚗 Carro</option>
-                                    </select>
-                                    {isRecalculatingRoutes && (
-                                        <div className="text-xs text-olive mt-1">Recalculando rotas...</div>
-                                    )}
-                                </div>
+                        {/* Tipos de Património */}
+                        <div className="space-y-1">
+                            {Object.entries(heritageIcons).map(([englishKey, svg]) => {
+                                const style = markerStyles[englishKey] || markerStyles['civilArchitecture'];
+                                const isVisible = visibleTypes.has(englishKey);
+                                const translatedTitle = t(`heritageTypes.${englishKey}`);
                                 
-                                {/* Tipos de Património */}
-                                <div className="space-y-1">
-                                    {Object.entries(heritageIcons).map(([englishKey, svg]) => {
-                                        const style = markerStyles[englishKey] || markerStyles['civilArchitecture'];
-                                        const isVisible = visibleTypes.has(englishKey);
-                                        const translatedTitle = t(`heritageTypes.${englishKey}`);
-                                        
-                                        return (
-                                            <div key={englishKey} className="flex items-center gap-2 text-xs p-1 rounded transition-colors hover:bg-deep-brown/5">
-                                                <div className="flex flex-col items-center gap-1">
-                                                    <div
-                                                        className={`w-5 h-5 flex items-center justify-center cursor-pointer ${!isVisible ? 'opacity-50' : ''}`}
-                                                        onClick={() => toggleTypeVisibility(englishKey)}
-                                                        style={{
-                                                            backgroundColor: isVisible ? style.bg : '#e5e7eb',
-                                                            width: '22px',
-                                                            height: '22px',
-                                                            borderRadius: '50%',
-                                                            border: `2px solid ${isVisible ? style.stroke : '#9ca3af'}`,
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center'
-                                                        }} 
-                                                        dangerouslySetInnerHTML={{ __html: svg }}
-                                                    />
-                                                    <button
-                                                        onClick={() => togglePathVisibility(translatedTitle)}
-                                                        className={`w-7 h-7 flex items-center justify-center text-[8px] rounded ${visiblePaths.has(translatedTitle) ? 'bg-olive text-white' : 'bg-cream/50 text-deep-brown'}`}
-                                                        title={visiblePaths.has(translatedTitle) ? 'Ocultar percurso' : 'Mostrar percurso'}
-                                                    >
-                                                        {visiblePaths.has(translatedTitle) ? (
-                                                            // Ícone de direções ativas (estilo Google Maps)
-                                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                                                                <path d="M21.71 11.29l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.38.39-1.01 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/>
-                                                            </svg>
-                                                        ) : (
-                                                            // Ícone de direções inativo (estilo Google Maps)
-                                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                                <path d="M21.71 11.29l-9-9c-.39-.39-1.02-.39-1.41 0l-9 9c-.39.39-.39 1.02 0 1.41l9 9c.39.39 1.02.39 1.41 0l9-9c.39-.38.39-1.01 0-1.41zM14 14.5V12h-4v3H8v-4c0-.55.45-1 1-1h5V7.5l3.5 3.5-3.5 3.5z"/>
-                                                            </svg>
-                                                        )}
-                                                    </button>
-                                                </div>
-                                                <span className={`text-deep-brown ${!isVisible ? 'line-through opacity-50' : ''}`}>{translatedTitle}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                                return (
+                                    <div key={englishKey} className="flex items-center gap-2 text-xs p-1 rounded transition-colors hover:bg-deep-brown/5">
+                                        <div className="flex flex-col items-center gap-1">
+                                            <div
+                                                className={`w-5 h-5 flex items-center justify-center cursor-pointer ${!isVisible ? 'opacity-50' : ''}`}
+                                                onClick={() => toggleTypeVisibility(englishKey)}
+                                                style={{
+                                                    backgroundColor: isVisible ? style.bg : '#e5e7eb',
+                                                    width: '22px',
+                                                    height: '22px',
+                                                    borderRadius: '50%',
+                                                    border: `2px solid ${isVisible ? style.stroke : '#9ca3af'}`,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center'
+                                                }} 
+                                                dangerouslySetInnerHTML={{ __html: svg }}
+                                            />
+                                            <button
+                                                onClick={() => togglePathVisibility(translatedTitle)}
+                                                className={`px-1 py-0.5 text-[8px] rounded ${visiblePaths.has(translatedTitle) ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-600'}`}
+                                            >
+                                                {visiblePaths.has(translatedTitle) ? 'Percurso' : 'Traçar'}
+                                            </button>
+                                        </div>
+                                        <span className={`text-gray-700 ${!isVisible ? 'line-through' : ''}`}>{translatedTitle}</span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
