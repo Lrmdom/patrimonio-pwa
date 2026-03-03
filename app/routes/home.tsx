@@ -16,19 +16,22 @@ const MapComponent = React.lazy(() =>
 const TAVIRA_CENTER: [number, number] = [37.1261, -7.6499];
 const INITIAL_ZOOM = 15;
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export const loader = async ({ params, request }: LoaderFunctionArgs) => {
+      const locale = params.locale || 'pt';
+
     const { data: limitesData, error } = await supabase
         .from('limites_administrativos')
         .select(`id, nome_freguesia, nome_concelho, codigo_ine, geometria, cor_area`)
         .eq('nome_concelho', 'Tavira');
 
-    return { limites: limitesData || [] };
+    return { limites: limitesData ,locale, };
 };
 
 export function Home() {
-    const { limites } = useLoaderData<typeof loader>();
+    const { limites,locale } = useLoaderData<typeof loader>();
     const rootData = useRouteLoaderData("root") as any;
     const bucketData = rootData?.bucketData;
+    //const locale = rootData?.locale || 'pt';
     const [isClient, setIsClient] = useState(false);
 
     useEffect(() => {
@@ -51,6 +54,7 @@ export function Home() {
                                 limites={limites}
                                 center={TAVIRA_CENTER}
                                 zoom={INITIAL_ZOOM}
+                                locale={locale}
                             />
                         </div>
                     </Suspense>

@@ -22,16 +22,31 @@ import { LanguageSwitcher } from "~/components/LanguageSwitcher";
 
 /**
  * Detecta a linguagem preferencial do utilizador através dos headers do browser.
+ * NOTA: No cliente, o locale vem do localStorage; no servidor, vem dos headers.
  */
 function getServerLanguage(request: Request): string {
-  const acceptLanguage = request.headers.get('accept-language');
-  if (acceptLanguage) {
-    const primaryLang = acceptLanguage.split(',')[0].split('-')[0];
-    if (['en', 'pt', 'es'].includes(primaryLang)) {
-      return primaryLang;
+  // No servidor, usar headers
+  if (typeof window === 'undefined') {
+    const acceptLanguage = request.headers.get('accept-language');
+    if (acceptLanguage) {
+      const primaryLang = acceptLanguage.split(',')[0].split('-')[0];
+      if (['en', 'pt', 'es'].includes(primaryLang)) {
+        return primaryLang;
+      }
     }
+    return 'en';
   }
-  return 'en';
+  
+  // No cliente (se chamado), usar localStorage
+  const savedLang = typeof localStorage !== 'undefined' 
+    ? localStorage.getItem('i18n_language') 
+    : null;
+  
+  if (savedLang && ['en', 'pt', 'es'].includes(savedLang)) {
+    return savedLang;
+  }
+  
+  return 'pt';
 }
 
 /**
