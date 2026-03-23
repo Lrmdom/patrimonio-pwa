@@ -11,4 +11,5 @@ export default [
   route("api/preview-mode/enable", "routes/api.preview-mode.enable.tsx"),
   route("api/preview-mode/disable", "routes/api.preview-mode.disable.tsx"),
   route("api/route", "routes/api.route.tsx"),
+  route("api/events", "routes/api.events.tsx"),
 ] satisfies RouteConfig;

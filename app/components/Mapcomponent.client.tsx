@@ -9,6 +9,8 @@ import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { Link } from 'react-router-dom';
+import { useFetcher } from "react-router";
+import { client } from "~/sanity/client";
 import ARPanel from './ARPanel';
 import { useTranslation } from 'react-i18next';
 
@@ -64,6 +66,30 @@ interface HeritageItem {
         url?: string;
         ficheiro?: { asset: { _ref: string } }
     }>;
+}
+
+interface Event {
+  _id: string;
+  titulo: { pt: string } | { [key: string]: string };
+  dataInicio: string;
+  dataFim?: string;
+  tipo: { _ref: string; titulo: { pt: string } | { [key: string]: string } };
+  descricao?: any;
+  localizacao?: { lat: number; lng: number };
+  endereco?: { pt: string } | { [key: string]: string };
+  imagem?: any;
+  link?: string;
+  startDate?: Date;
+  endDate?: Date;
+  isMultiDay?: boolean;
+}
+
+interface EventsResponse {
+  events: Event[];
+  year: number;
+  month: number;
+  total: number;
+  error?: string;
 }
 
 interface MapProps {
@@ -206,10 +232,76 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [isRestauracaoOpen, setIsRestauracaoOpen] = useState(false);
     const [isTransportesOpen, setIsTransportesOpen] = useState(false);
     const [isServicosOpen, setIsServicosOpen] = useState(false);
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     // State for mutually exclusive accordions
     const [activeAccordion, setActiveAccordion] = useState<string>('legend');
     // Calendar state
     const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
+
+    // Event data loading
+    const eventsFetcher = useFetcher<EventsResponse>();
+    const [eventsData, setEventsData] = useState<Event[]>([]);
+
+    // Load events when calendar month changes or component mounts
+    useEffect(() => {
+        const year = currentCalendarDate.getFullYear();
+        const month = currentCalendarDate.getMonth() + 1;
+        
+        console.log(`🗓️ Loading events for ${year}-${month.toString().padStart(2, '0')}`);
+        eventsFetcher.load(`/api/events?year=${year}&month=${month}`);
+    }, [currentCalendarDate]);
+
+    // Update events data when fetcher data changes
+    useEffect(() => {
+        if (eventsFetcher.data?.events) {
+            console.log(`📅 Updated events data: ${eventsFetcher.data.events.length} events`);
+            setEventsData(eventsFetcher.data.events);
+        }
+    }, [eventsFetcher.data]);
+
+    // Group events by date for calendar badges
+    const eventsByDate = useMemo(() => {
+        const grouped: Record<string, Event[]> = {};
+        eventsData.forEach(event => {
+            const startDate = new Date(event.dataInicio);
+            const endDate = event.dataFim ? new Date(event.dataFim) : startDate;
+            
+            // Add event for each day it spans
+            const currentDay = new Date(startDate);
+            while (currentDay <= endDate) {
+                const dateKey = currentDay.toISOString().split('T')[0];
+                if (!grouped[dateKey]) grouped[dateKey] = [];
+                grouped[dateKey].push(event);
+                currentDay.setDate(currentDay.getDate() + 1);
+            }
+        });
+        return grouped;
+    }, [eventsData]);
+    
+    // Funções para navegar no calendário
+    const nextMonth = useCallback(() => {
+        setCurrentCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    }, []);
+
+    const prevMonth = useCallback(() => {
+        setCurrentCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    }, []);
+
+    // Formatação do nome do mês atual
+    const currentMonthName = useMemo(() => {
+        return currentCalendarDate.toLocaleString('pt-PT', { month: 'long', year: 'numeric' });
+    }, [currentCalendarDate]);
+
+    // Lógica para gerar os dias dinamicamente
+    const calendarDays = useMemo(() => {
+        const year = currentCalendarDate.getFullYear();
+        const month = currentCalendarDate.getMonth();
+        
+        const firstDayOfMonth = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        return { firstDayOfMonth, daysInMonth };
+    }, [currentCalendarDate]);
     
     // Refs
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -683,35 +775,61 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                     <div className={`transition-all duration-300 ease-in-out ${activeAccordion === 'eventos' ? 'max-h-[600px] overflow-y-auto opacity-100' : 'max-h-0 overflow-hidden opacity-0'}`}>
                         <div className="px-3 pb-3">
                             {/* Calendar subsection - closed by default */}
-                            <div className="mb-2 bg-red-50 border border-red-200 rounded-lg">
-                                <button onClick={() => setIsFestivaisOpen(!isFestivaisOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-red-800">📅 Calendário de Eventos</span>
-                                    <svg className={`w-3 h-3 text-red-800 transition-transform ${isFestivaisOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            <div className="mb-2 bg-blue-50 border border-blue-200 rounded-lg">
+                                <button onClick={() => setIsCalendarOpen(!isCalendarOpen)} className="w-full px-3 py-2 flex items-center justify-between">
+                                    <span className="text-xs font-serif font-bold text-blue-800">📅 Calendário de Eventos</span>
+                                    <svg className={`w-3 h-3 text-blue-800 transition-transform ${isCalendarOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                                 </button>
-                                <div className={`transition-all ${isFestivaisOpen ? 'max-h-80 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                    <div className="text-xs text-red-700">
-                                        <p className="mb-2">Calendário completo do mês:</p>
-                                        {/* Full month calendar */}
+                                
+                                <div className={`transition-all ${isCalendarOpen ? 'max-h-96 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                    <div className="text-xs text-blue-700">
+                                        {/* Header de Navegação */}
+                                        <div className="flex items-center justify-between mb-3 px-1">
+                                            <button onClick={(e) => { e.stopPropagation(); prevMonth(); }} className="p-1 hover:bg-blue-200 rounded">◀</button>
+                                            <span className="font-bold capitalize text-[10px]">{currentMonthName}</span>
+                                            <button onClick={(e) => { e.stopPropagation(); nextMonth(); }} className="p-1 hover:bg-blue-200 rounded">▶</button>
+                                        </div>
+
+                                        {/* Grid do Calendário */}
                                         <div className="grid grid-cols-7 gap-1 text-center">
-                                            <div className="text-[8px] font-bold">D</div>
-                                            <div className="text-[8px] font-bold">S</div>
-                                            <div className="text-[8px] font-bold">T</div>
-                                            <div className="text-[8px] font-bold">Q</div>
-                                            <div className="text-[8px] font-bold">Q</div>
-                                            <div className="text-[8px] font-bold">S</div>
-                                            <div className="text-[8px] font-bold">S</div>
-                                            {/* Empty cells for start of month */}
-                                            {Array.from({length: 3}, (_, i) => (
+                                            {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+                                                <div key={`weekday-${i}`} className="text-[8px] font-bold opacity-60">{d}</div>
+                                            ))}
+                                            
+                                            {/* Células vazias para o início do mês */}
+                                            {Array.from({ length: calendarDays.firstDayOfMonth }).map((_, i) => (
                                                 <div key={`empty-${i}`} className="text-[8px] p-1"></div>
                                             ))}
-                                            {/* Full month days */}
-                                            {Array.from({length: 31}, (_, i) => (
-                                                <div key={i} className={`text-[8px] p-1 rounded cursor-pointer transition-colors ${i + 1 === 15 ? 'bg-red-300 font-bold text-red-900' : 'hover:bg-red-100'}`}>
-                                                    {i + 1}
-                                                </div>
-                                            ))}
+                                            
+                                            {/* Dias do mês com badges de eventos */}
+                                            {Array.from({ length: calendarDays.daysInMonth }).map((_, i) => {
+                                                const day = i + 1;
+                                                const dateKey = `${currentCalendarDate.getFullYear()}-${(currentCalendarDate.getMonth() + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                                                const dayEvents = eventsByDate[dateKey] || [];
+                                                const isToday = new Date().getDate() === day && 
+                                                                new Date().getMonth() === currentCalendarDate.getMonth() &&
+                                                                new Date().getFullYear() === currentCalendarDate.getFullYear();
+                                                
+                                                return (
+                                                    <div 
+                                                        key={day} 
+                                                        className={`text-[8px] p-1 rounded cursor-pointer transition-colors relative
+                                                            ${isToday ? 'bg-blue-500 text-white font-bold' : 'hover:bg-blue-50'}`}
+                                                        onClick={() => {/* Handle date click for events */}}
+                                                    >
+                                                        {day}
+                                                        {dayEvents.length > 0 && (
+                                                            <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[6px] rounded-full w-3 h-3 flex items-center justify-center font-bold">
+                                                                {dayEvents.length}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                        <p className="mt-2 text-[8px] text-center text-red-600">Clique numa data para ver eventos</p>
+                                        <p className="mt-2 text-[8px] text-center text-blue-600">
+                                            {eventsData.length > 0 ? `${eventsData.length} eventos este mês` : 'Selecione um dia para ver eventos'}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
