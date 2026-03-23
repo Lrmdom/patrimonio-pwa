@@ -74,6 +74,7 @@ interface Event {
   dataInicio: string;
   dataFim?: string;
   tipo: { _ref: string; titulo: { pt: string } | { [key: string]: string } };
+  categorias?: { _key: string; value: string }[];
   descricao?: any;
   localizacao?: { lat: number; lng: number };
   endereco?: { pt: string } | { [key: string]: string };
@@ -237,19 +238,33 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [activeAccordion, setActiveAccordion] = useState<string>('legend');
     // Calendar state
     const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [showDayEvents, setShowDayEvents] = useState(false);
 
     // Event data loading
     const eventsFetcher = useFetcher<EventsResponse>();
     const [eventsData, setEventsData] = useState<Event[]>([]);
 
-    // Load events when calendar month changes or component mounts
+    // Load events when calendar month changes or component mounts or calendar opens
     useEffect(() => {
         const year = currentCalendarDate.getFullYear();
         const month = currentCalendarDate.getMonth() + 1;
         
         console.log(`🗓️ Loading events for ${year}-${month.toString().padStart(2, '0')}`);
+        console.log(`🗓️ Current calendar date:`, currentCalendarDate);
         eventsFetcher.load(`/api/events?year=${year}&month=${month}`);
     }, [currentCalendarDate]);
+    
+    // Also load events when calendar is opened
+    useEffect(() => {
+        if (isCalendarOpen) {
+            const year = currentCalendarDate.getFullYear();
+            const month = currentCalendarDate.getMonth() + 1;
+            
+            console.log(`🗓️ Calendar opened, loading events for ${year}-${month.toString().padStart(2, '0')}`);
+            eventsFetcher.load(`/api/events?year=${year}&month=${month}`);
+        }
+    }, [isCalendarOpen, currentCalendarDate]);
 
     // Update events data when fetcher data changes
     useEffect(() => {
@@ -262,9 +277,13 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     // Group events by date for calendar badges
     const eventsByDate = useMemo(() => {
         const grouped: Record<string, Event[]> = {};
+        console.log(`🗓️ Processing ${eventsData.length} events for calendar`);
+        
         eventsData.forEach(event => {
             const startDate = new Date(event.dataInicio);
             const endDate = event.dataFim ? new Date(event.dataFim) : startDate;
+            
+            console.log(`🗓️ Processing event: ${(event.titulo as any)?.pt || (event.titulo as any)?.en || 'Sem título'}, Start: ${startDate.toISOString()}, End: ${endDate?.toISOString()}`);
             
             // Add event for each day it spans
             const currentDay = new Date(startDate);
@@ -275,8 +294,152 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 currentDay.setDate(currentDay.getDate() + 1);
             }
         });
+        
+        console.log(`🗓️ Grouped events by date:`, Object.keys(grouped));
         return grouped;
     }, [eventsData]);
+    
+    // Event type icons mapping
+    const getEventIcon = useCallback((eventType: string) => {
+        const icons: Record<string, string> = {
+            'gastronomia': '�️',
+            'gastronomy': '🍽️',
+            'música': '�',
+            'music': '�',
+            'cultura': '🏛️',
+            'culture': '�️',
+            'artes': '🎨',
+            'arts': '🎨',
+            'natureza': '�',
+            'nature': '🌿',
+            'cinema': '�',
+            'desporto': '⚽',
+            'sports': '⚽',
+            'artesanato': '�',
+            'crafts': '�',
+            'fotografia': '📷',
+            'photography': '📷'
+        };
+        return icons[eventType.toLowerCase()] || '📅';
+    }, []);
+    
+    // Day click handler
+    const handleDayClick = useCallback((dateKey: string, dayEvents: Event[]) => {
+        if (dayEvents.length > 0) {
+            setSelectedDate(dateKey);
+            setShowDayEvents(true);
+            console.log(`📅 Selected date: ${dateKey}, Events: ${dayEvents.length}`);
+        }
+    }, []);
+    
+    // Close events display
+    const closeDayEvents = useCallback(() => {
+        setShowDayEvents(false);
+        setSelectedDate(null);
+    }, []);
+    
+    // Format date for display
+    const formatDate = useCallback((dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleString('pt-PT', { 
+            day: 'numeric', 
+            month: 'long', 
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }, []);
+    
+    // Get events for selected date
+    const selectedDateEvents = useMemo(() => {
+        if (!selectedDate) return [];
+        return eventsByDate[selectedDate] || [];
+    }, [selectedDate, eventsByDate]);
+    
+    // Helper functions to safely access multilingual properties
+    const getEventTitle = useCallback((titulo: any) => {
+        if (typeof titulo === 'string') return titulo;
+        if (titulo?.pt) return titulo.pt;
+        if (titulo?.en) return titulo.en;
+        return 'Sem título';
+    }, []);
+    
+    const getEventTypeName = useCallback((tipo: any) => {
+        if (!tipo?.titulo) return '';
+        if (typeof tipo.titulo === 'string') return tipo.titulo;
+        if (tipo.titulo.pt) return tipo.titulo.pt;
+        if (tipo.titulo.en) return tipo.titulo.en;
+        return '';
+    }, []);
+    
+    // Helper to get event category name from categorias array
+    const getEventCategoryName = useCallback((categorias: any[]) => {
+        if (!categorias || !categorias.length) return '';
+        const ptCategory = categorias.find((cat: any) => cat._key === 'pt');
+        return ptCategory?.value || categorias[0]?.value || '';
+    }, []);
+    
+    // Função para controlar popup único
+    const handlePopupOpen = useCallback((markerId: string) => {
+        setActivePopupId(markerId);
+    }, []);
+    
+    // Create event marker icon
+    const createEventIcon = useCallback((eventType: string) => {
+        const icon = getEventIcon(eventType);
+        return L.divIcon({
+            className: 'event-marker',
+            html: `
+                <div class="event-marker-container" style="background-color: #10B981; border-color: #FFFFFF; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                    ${icon}
+                </div>
+            `,
+            iconSize: [24, 24],
+            iconAnchor: [12, 12],
+            popupAnchor: [0, -12]
+        });
+    }, [getEventIcon]);
+    
+    // Generate event markers for selected date
+    const eventMarkers = useMemo(() => {
+        if (!showDayEvents || !selectedDateEvents.length) return [];
+        
+        return selectedDateEvents.map((event) => {
+            // Use real event coordinates if available
+            const eventLocation = event.localizacao ? [event.localizacao.lat, event.localizacao.lng] as [number, number] : center;
+            const categoryName = getEventCategoryName(event.categorias || []);
+            
+            console.log(`🗓️ Event marker: ${getEventTitle(event.titulo)}, Location: ${eventLocation}, Coords:`, event.localizacao);
+            
+            return (
+                <Marker
+                    key={`event-${event._id}`}
+                    position={eventLocation}
+                    icon={createEventIcon(categoryName)}
+                    eventHandlers={{ click: () => handlePopupOpen(`event-${event._id}`) }}
+                    zIndexOffset={900} // Above heritage markers but below user location
+                >
+                    <Popup autoClose={false} closeOnClick={false}>
+                        <div className="p-2 min-w-[200px]">
+                            <div className="flex items-center space-x-2 mb-2">
+                                <span className="text-lg">{getEventIcon(categoryName)}</span>
+                                <h3 className="font-bold text-sm">{getEventTitle(event.titulo)}</h3>
+                            </div>
+                            <div className="text-xs text-gray-600 space-y-1">
+                                <div>🕐 {formatDate(event.dataInicio)}</div>
+                                {event.dataFim && event.dataFim !== event.dataInicio && (
+                                    <div>🕐 {formatDate(event.dataFim)}</div>
+                                )}
+                                {event.endereco && (
+                                    <div>📍 {getEventTitle(event.endereco)}</div>
+                                )}
+                            </div>
+                        </div>
+                    </Popup>
+                </Marker>
+            );
+        });
+    }, [showDayEvents, selectedDateEvents, center, createEventIcon, getEventCategoryName, getEventIcon, getEventTitle, formatDate, handlePopupOpen]);
     
     // Funções para navegar no calendário
     const nextMonth = useCallback(() => {
@@ -382,11 +545,6 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             
             return newSet;
         });
-    }, []);
-
-    // Função para controlar popup único
-    const handlePopupOpen = useCallback((markerId: string) => {
-        setActivePopupId(markerId);
     }, []);
 
     // Hooks customizados
@@ -712,8 +870,12 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                             <GeoJSON key={`geo-${index}`} data={feature} style={() => ({ fillColor: feature.properties.cor_fundo, color: '#444444', weight: 1, fillOpacity: 0.4, dashArray: '5,5' })} />
                         ))}
 
-                    {pathPolylines}
-                </MapContainer>
+                        {pathPolylines}
+                        
+                        {/* Event markers for selected date */}
+                        {eventMarkers}
+                        
+                    </MapContainer>
             </div>
 
             {/* Accordions container - absolute top left */}
@@ -814,8 +976,9 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                     <div 
                                                         key={day} 
                                                         className={`text-[8px] p-1 rounded cursor-pointer transition-colors relative
-                                                            ${isToday ? 'bg-blue-500 text-white font-bold' : 'hover:bg-blue-50'}`}
-                                                        onClick={() => {/* Handle date click for events */}}
+                                                            ${isToday ? 'bg-blue-500 text-white font-bold' : 'hover:bg-blue-50'}
+                                                            ${selectedDate === dateKey ? 'bg-green-500 text-white font-bold' : ''}`}
+                                                        onClick={() => handleDayClick(dateKey, dayEvents)}
                                                     >
                                                         {day}
                                                         {dayEvents.length > 0 && (
@@ -830,6 +993,45 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                         <p className="mt-2 text-[8px] text-center text-blue-600">
                                             {eventsData.length > 0 ? `${eventsData.length} eventos este mês` : 'Selecione um dia para ver eventos'}
                                         </p>
+                                        
+                                        {/* Events display for selected date */}
+                                        {showDayEvents && selectedDateEvents.length > 0 && (
+                                            <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded-lg">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <h4 className="text-xs font-bold text-green-800">
+                                                        📅 {formatDate(selectedDate!)}
+                                                    </h4>
+                                                    <button 
+                                                        onClick={closeDayEvents}
+                                                        className="text-xs text-green-600 hover:text-green-800"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                                <div className="space-y-2 max-h-48 overflow-y-auto">
+                                                    {selectedDateEvents.map((event) => (
+                                                        <div key={event._id} className="p-2 bg-white rounded border border-green-100">
+                                                            <div className="flex items-start space-x-2">
+                                                                <span className="text-lg">
+                                                                    {getEventIcon(getEventTypeName(event.tipo))}
+                                                                </span>
+                                                                <div className="flex-1">
+                                                                    <h5 className="text-xs font-bold text-gray-800">
+                                                                        {getEventTitle(event.titulo)}
+                                                                    </h5>
+                                                                    <div className="text-[10px] text-gray-600 mt-1">
+                                                                        <div>🕐 {formatDate(event.dataInicio)}</div>
+                                                                        {event.dataFim && event.dataFim !== event.dataInicio && (
+                                                                            <div>🕐 {formatDate(event.dataFim)}</div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
