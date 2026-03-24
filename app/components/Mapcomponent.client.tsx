@@ -257,6 +257,11 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
     const [showDayEvents, setShowDayEvents] = useState(false);
 
+    // Constraints calendar state (independent)
+    const [constraintsCalendarDate, setConstraintsCalendarDate] = useState(new Date());
+    const [constraintsSelectedDate, setConstraintsSelectedDate] = useState<string | null>(null);
+    const [showConstraintsDay, setShowConstraintsDay] = useState(false);
+
     // Event data loading
     const eventsFetcher = useFetcher<EventsResponse>();
     const [eventsData, setEventsData] = useState<Event[]>([]);
@@ -264,6 +269,10 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [restaurantsData, setRestaurantsData] = useState<any[]>([]);
     const [nightlifeData, setNightlifeData] = useState<any[]>([]);
     const [urbanPlansData, setUrbanPlansData] = useState<any[]>([]);
+
+    // Constraints data loading (independent)
+    const constraintsFetcher = useFetcher<any>();
+    const [constraintsData, setConstraintsData] = useState<any[]>([]);
 
     // Load events when calendar month changes or component mounts or calendar opens
     useEffect(() => {
@@ -294,6 +303,18 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         }
     }, [activeSubAccordion, currentCalendarDate]);
 
+    // Load constraints when constraints accordion is opened or month changes
+    useEffect(() => {
+        console.log(`🚧 Constraints useEffect triggered. activeAccordion: ${activeAccordion}, constraintsCalendarDate:`, constraintsCalendarDate);
+        if (activeAccordion === 'condicionantes') {
+            const year = constraintsCalendarDate.getFullYear();
+            const month = constraintsCalendarDate.getMonth() + 1;
+            
+            console.log(`🚧 Constraints accordion opened or month changed, loading constraints for ${year}-${month.toString().padStart(2, '0')}`);
+            constraintsFetcher.load(`/api/constraints?year=${year}&month=${month}`);
+        }
+    }, [activeAccordion, constraintsCalendarDate]);
+
     // Update events data when fetcher data changes
     useEffect(() => {
         console.log('🔄 EventsFetcher data changed:', eventsFetcher.data);
@@ -322,6 +343,14 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             setUrbanPlansData(eventsFetcher.data.urbanPlans);
         }
     }, [eventsFetcher.data]);
+
+    // Update constraints data when fetcher data changes
+    useEffect(() => {
+        if (constraintsFetcher.data?.constraints) {
+            console.log(`🚧 Updated constraints data: ${constraintsFetcher.data.constraints.length} constraints`);
+            setConstraintsData(constraintsFetcher.data.constraints);
+        }
+    }, [constraintsFetcher.data]);
 
     // Group events by date for calendar badges
     const eventsByDate = useMemo(() => {
@@ -404,6 +433,36 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         if (!selectedDate) return [];
         return eventsByDate[selectedDate] || [];
     }, [selectedDate, eventsByDate]);
+
+    // Group constraints by date for calendar badges
+    const constraintsByDate = useMemo(() => {
+        const grouped: Record<string, any[]> = {};
+        console.log(`🚧 Processing ${constraintsData.length} constraints for calendar`);
+        console.log(`🚧 Constraints data:`, constraintsData);
+        
+        constraintsData.forEach(constraint => {
+            const startDate = new Date(constraint.valid_from || constraint.created_at);
+            const endDate = constraint.valid_to ? new Date(constraint.valid_to) : startDate;
+            
+            console.log(`🚧 Processing constraint: ${constraint.descricao}, Start: ${startDate.toISOString()}, End: ${endDate?.toISOString()}`);
+            
+            // Add constraint to each day it's active (using UTC to avoid timezone issues)
+            for (let date = new Date(startDate); date <= endDate; ) {
+                // Use UTC methods to avoid timezone issues
+                const dateKey = `${date.getUTCFullYear()}-${(date.getUTCMonth() + 1).toString().padStart(2, '0')}-${date.getUTCDate().toString().padStart(2, '0')}`;
+                if (!grouped[dateKey]) {
+                    grouped[dateKey] = [];
+                }
+                grouped[dateKey].push(constraint);
+                
+                // Move to next day using UTC
+                date.setUTCDate(date.getUTCDate() + 1);
+            }
+        });
+        
+        console.log(`🚧 Constraints grouped by date:`, grouped);
+        return grouped;
+    }, [constraintsData]);
     
     // Helper functions to safely access multilingual properties
     const getEventTitle = useCallback((titulo: any) => {
@@ -431,6 +490,19 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     // Função para controlar popup único
     const handlePopupOpen = useCallback((markerId: string) => {
         setActivePopupId(markerId);
+    }, []);
+
+    // Constraints day click handler
+    const handleConstraintsDayClick = useCallback((dateKey: string, dayConstraints: any[]) => {
+        setConstraintsSelectedDate(dateKey);
+        setShowConstraintsDay(true);
+        console.log(`🚧 Constraints day clicked: ${dateKey}, ${dayConstraints.length} constraints`);
+    }, []);
+
+    // Close constraints day view
+    const closeConstraintsDay = useCallback(() => {
+        setShowConstraintsDay(false);
+        setConstraintsSelectedDate(null);
     }, []);
     
     // Função para controlar sub-accordions mutuamente exclusivos
@@ -709,6 +781,15 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         setCurrentCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
     }, []);
 
+    // Constraints calendar navigation functions
+    const nextConstraintsMonth = useCallback(() => {
+        setConstraintsCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+    }, []);
+
+    const prevConstraintsMonth = useCallback(() => {
+        setConstraintsCalendarDate(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+    }, []);
+
     // Formatação do nome do mês atual
     const currentMonthName = useMemo(() => {
         return currentCalendarDate.toLocaleString('pt-PT', { month: 'long', year: 'numeric' });
@@ -724,6 +805,22 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         
         return { firstDayOfMonth, daysInMonth };
     }, [currentCalendarDate]);
+
+    // Constraints calendar month name and days
+    const constraintsMonthName = useMemo(() => {
+        return constraintsCalendarDate.toLocaleString('pt-PT', { month: 'long', year: 'numeric' });
+    }, [constraintsCalendarDate]);
+
+    // Constraints calendar days logic
+    const constraintsCalendarDays = useMemo(() => {
+        const year = constraintsCalendarDate.getFullYear();
+        const month = constraintsCalendarDate.getMonth();
+        
+        const firstDayOfMonth = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        return { firstDayOfMonth, daysInMonth };
+    }, [constraintsCalendarDate]);
     
     // Refs
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -1553,12 +1650,105 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         </div>
                         <svg className={`w-4 h-4 text-deep-brown transition-transform ${activeAccordion === 'condicionantes' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                     </button>
-                    <div className={`transition-all duration-300 ease-in-out ${activeAccordion === 'eventos' ? 'max-h-[600px] overflow-y-auto opacity-100' : 'max-h-0 overflow-hidden opacity-0'}`}>
+                    <div className={`transition-all duration-300 ease-in-out ${activeAccordion === 'condicionantes' ? 'max-h-[600px] overflow-y-auto opacity-100' : 'max-h-0 overflow-hidden opacity-0'}`}>
                         <div className="px-3 pb-3">
-                            {/* Calendar subsection - closed by default */}
-                            
+                            {/* Constraints Calendar */}
+                            <div className="mb-2 bg-orange-50 border border-orange-200 rounded-lg p-2">
+                                {/* Header de Navegação */}
+                                <div className="flex items-center justify-between mb-3 px-1">
+                                    <button onClick={(e) => { e.stopPropagation(); prevConstraintsMonth(); }} className="p-1 hover:bg-orange-200 rounded">◀</button>
+                                    <span className="font-bold capitalize text-[10px]">{constraintsMonthName}</span>
+                                    <button onClick={(e) => { e.stopPropagation(); nextConstraintsMonth(); }} className="p-1 hover:bg-orange-200 rounded">▶</button>
+                                </div>
 
-                          
+                                {/* Grid do Calendário */}
+                                <div className="grid grid-cols-7 gap-1 text-center">
+                                    {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+                                        <div key={`constraints-weekday-${i}`} className="text-[8px] font-bold opacity-60">{d}</div>
+                                    ))}
+                                    
+                                    {/* Células vazias para o início do mês */}
+                                    {Array.from({ length: constraintsCalendarDays.firstDayOfMonth }).map((_, i) => (
+                                        <div key={`constraints-empty-${i}`} className="text-[8px] p-1"></div>
+                                    ))}
+                                    
+                                    {/* Dias do mês com badges de condicionantes */}
+                                    {Array.from({ length: constraintsCalendarDays.daysInMonth }).map((_, i) => {
+                                        const day = i + 1;
+                                        // Use UTC date key to match the grouping logic
+                                        const dateKey = `${constraintsCalendarDate.getFullYear()}-${(constraintsCalendarDate.getMonth() + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                                        const dayConstraints = constraintsByDate[dateKey] || [];
+                                        const isToday = new Date().getUTCDate() === day && 
+                                                        new Date().getUTCMonth() === constraintsCalendarDate.getMonth() &&
+                                                        new Date().getUTCFullYear() === constraintsCalendarDate.getFullYear();
+                                        
+                                        if (day === 1) {
+                                            console.log(`🚧 First day of month: ${dateKey}, constraints: ${dayConstraints.length}`);
+                                        }
+                                        
+                                        return (
+                                            <div 
+                                                key={`constraints-${day}`} 
+                                                className={`text-[8px] p-1 rounded cursor-pointer transition-colors relative
+                                                    ${isToday ? 'bg-orange-500 text-white font-bold' : 'hover:bg-orange-50'}
+                                                    ${constraintsSelectedDate === dateKey ? 'bg-green-500 text-white font-bold' : ''}`}
+                                                onClick={() => handleConstraintsDayClick(dateKey, dayConstraints)}
+                                            >
+                                                {day}
+                                                {dayConstraints.length > 0 && (
+                                                    <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[6px] rounded-full w-3 h-3 flex items-center justify-center font-bold">
+                                                        {dayConstraints.length}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <p className="mt-2 text-[8px] text-center text-orange-600">
+                                    {constraintsData.length > 0 ? `${constraintsData.length} condicionantes este mês` : 'Selecione um dia para ver condicionantes'}
+                                </p>
+                                
+                                {/* Constraints display for selected date */}
+                                {showConstraintsDay && constraintsSelectedDate && constraintsByDate[constraintsSelectedDate]?.length > 0 && (
+                                    <div className="mt-3 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h4 className="text-xs font-bold text-orange-800">
+                                                🚧 {formatDate(constraintsSelectedDate)}
+                                            </h4>
+                                            <button 
+                                                onClick={closeConstraintsDay}
+                                                className="text-xs text-orange-600 hover:text-orange-800"
+                                            >
+                                                ✕
+                                            </button>
+                                        </div>
+                                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                                            {constraintsByDate[constraintsSelectedDate].map((constraint: any) => (
+                                                <div key={constraint.id} className="p-2 bg-white rounded border border-orange-100">
+                                                    <div className="flex items-start space-x-2">
+                                                        <div 
+                                                            className="w-3 h-3 rounded-full mt-0.5" 
+                                                            style={{ backgroundColor: constraint.tc_cor || '#f59e0b' }}
+                                                        ></div>
+                                                        <div className="flex-1">
+                                                            <h5 className="text-xs font-bold text-gray-800">
+                                                                {constraint.descricao}
+                                                            </h5>
+                                                            <div className="text-[10px] text-gray-600 mt-1">
+                                                                <div>📋 {constraint.tc_nome || constraint.tipo}</div>
+                                                                <div>📅 {formatDate(constraint.valid_from)}</div>
+                                                                {constraint.valid_to && constraint.valid_to !== constraint.valid_from && (
+                                                                    <div>📅 {formatDate(constraint.valid_to)}</div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
