@@ -273,6 +273,8 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     // Constraints data loading (independent)
     const constraintsFetcher = useFetcher<any>();
     const [constraintsData, setConstraintsData] = useState<any[]>([]);
+    const [showConstraintsMarkers, setShowConstraintsMarkers] = useState(false);
+    const [visibleConstraints, setVisibleConstraints] = useState<any[]>([]);
 
     // Load events when calendar month changes or component mounts or calendar opens
     useEffect(() => {
@@ -496,13 +498,20 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const handleConstraintsDayClick = useCallback((dateKey: string, dayConstraints: any[]) => {
         setConstraintsSelectedDate(dateKey);
         setShowConstraintsDay(true);
-        console.log(`🚧 Constraints day clicked: ${dateKey}, ${dayConstraints.length} constraints`);
+        
+        // Clear existing constraints and show only the ones for selected day
+        setVisibleConstraints(dayConstraints);
+        setShowConstraintsMarkers(true);
+        
+        console.log(`🚧 Showing ${dayConstraints.length} constraints on map for ${dateKey} (cleared previous)`);
     }, []);
 
     // Close constraints day view
     const closeConstraintsDay = useCallback(() => {
         setShowConstraintsDay(false);
         setConstraintsSelectedDate(null);
+        setVisibleConstraints([]); // Clear visible constraints
+        setShowConstraintsMarkers(false); // Hide markers
     }, []);
     
     // Função para controlar sub-accordions mutuamente exclusivos
@@ -1229,6 +1238,70 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         {/* Event markers for selected date */}
                         {eventMarkers}
                         
+                        {/* Constraints layers */}
+                        {showConstraintsMarkers && visibleConstraints.map((constraint: any) => {
+                            if (!constraint.geom) return null;
+                            
+                            // Parse geometry if it's a string
+                            let geometry = constraint.geom;
+                            if (typeof geometry === 'string') {
+                                try {
+                                    geometry = JSON.parse(geometry);
+                                } catch (error) {
+                                    console.error('❌ Erro ao parsear geometria da condicionante:', error);
+                                    return null;
+                                }
+                            }
+                            
+                            if (!geometry || !geometry.coordinates) {
+                                console.warn('⚠️ Condicionante sem geometria válida:', constraint.id);
+                                return null;
+                            }
+                            
+                            // Create GeoJSON feature
+                            const geoJSONFeature = {
+                                type: 'Feature' as const,
+                                properties: {
+                                    id: constraint.id,
+                                    descricao: constraint.descricao,
+                                    tipo: constraint.tc_nome || constraint.tipo,
+                                    cor: constraint.tc_cor || '#f59e0b',
+                                    peso: constraint.tc_peso || 2,
+                                    opacidade: constraint.tc_opacidade || 0.8,
+                                    padrao: constraint.tc_padrao_visual || 'solido'
+                                },
+                                geometry: geometry
+                            };
+                            
+                            return (
+                                <GeoJSON 
+                                    key={`constraint-${constraint.id}`}
+                                    data={geoJSONFeature}
+                                    style={() => ({
+                                        color: geoJSONFeature.properties.cor,
+                                        weight: geoJSONFeature.properties.peso,
+                                        fillColor: geoJSONFeature.properties.cor,
+                                        fillOpacity: geoJSONFeature.properties.opacidade,
+                                        dashArray: geoJSONFeature.properties.padrao === 'solido' ? undefined : '5,5'
+                                    })}
+                                    onEachFeature={(feature, layer) => {
+                                        // Add popup
+                                        const popupContent = `
+                                            <div class="p-2 w-[200px]">
+                                                <h4 class="font-bold text-sm mb-1">🚧 ${feature.properties.descricao}</h4>
+                                                <div class="text-xs text-gray-600 space-y-1">
+                                                    <div>📋 ${feature.properties.tipo}</div>
+                                                    <div>📅 ${constraint.valid_from ? new Date(constraint.valid_from).toLocaleDateString('pt-PT') : 'Sem data'}</div>
+                                                    ${constraint.valid_to ? `<div>📅 ${new Date(constraint.valid_to).toLocaleDateString('pt-PT')}</div>` : ''}
+                                                </div>
+                                            </div>
+                                        `;
+                                        layer.bindPopup(popupContent);
+                                    }}
+                                />
+                            );
+                        })}
+                        
                         {/* Accommodation markers */}
                         {accommodationMarkers}
                         
@@ -1631,11 +1704,22 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                     <button onClick={() => setActiveAccordion(activeAccordion === 'condicionantes' ? '' : 'condicionantes')} className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5 transition-colors rounded-t-lg">
                         <div className="flex items-center space-x-2">
                             <button 
-                                onClick={(e) => { e.stopPropagation(); setShowEventsMarkers(!showEventsMarkers); }}
+                                onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    if (showConstraintsMarkers) {
+                                        // Hide and clear constraints
+                                        setShowConstraintsMarkers(false);
+                                        setVisibleConstraints([]);
+                                    } else {
+                                        // Show all constraints for current month
+                                        setShowConstraintsMarkers(true);
+                                        setVisibleConstraints(constraintsData);
+                                    }
+                                }}
                                 className="p-1 hover:bg-deep-brown/10 rounded"
-                                title={showEventsMarkers ? 'Esconder condicionantes' : 'Mostrar condicionantes'}
+                                title={showConstraintsMarkers ? 'Esconder condicionantes' : 'Mostrar condicionantes'}
                             >
-                                {showEventsMarkers ? (
+                                {showConstraintsMarkers ? (
                                     <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -1705,7 +1789,11 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                     })}
                                 </div>
                                 <p className="mt-2 text-[8px] text-center text-orange-600">
-                                    {constraintsData.length > 0 ? `${constraintsData.length} condicionantes este mês` : 'Selecione um dia para ver condicionantes'}
+                                    {constraintsData.length > 0 ? (
+                                        showConstraintsMarkers ? 
+                                            `🗺️ ${visibleConstraints.length} de ${constraintsData.length} condicionantes visíveis` : 
+                                            `${constraintsData.length} condicionantes este mês`
+                                    ) : 'Selecione um dia para ver condicionantes'}
                                 </p>
                                 
                                 {/* Constraints display for selected date */}
