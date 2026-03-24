@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, GeoJSON, Polyline, useMap, ZoomControl } from 'react-leaflet';
 import MarkerClusterGroup from 'react-leaflet-cluster';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -87,6 +87,10 @@ interface Event {
 
 interface EventsResponse {
   events: Event[];
+  accommodation: any[];
+  restaurants: any[];
+  nightlife: any[];
+  urbanPlans: any[];
   year: number;
   month: number;
   total: number;
@@ -233,9 +237,21 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     const [isRestauracaoOpen, setIsRestauracaoOpen] = useState(false);
     const [isTransportesOpen, setIsTransportesOpen] = useState(false);
     const [isServicosOpen, setIsServicosOpen] = useState(false);
+    const [isNightlifeOpen, setIsNightlifeOpen] = useState(false);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-    // State for mutually exclusive accordions
-    const [activeAccordion, setActiveAccordion] = useState<string>('legend');
+    // State for mutually exclusive accordions - none selected by default
+    const [activeAccordion, setActiveAccordion] = useState<string | null>(null);
+    // State for mutually exclusive sub-accordions
+    const [activeSubAccordion, setActiveSubAccordion] = useState<string | null>(null);
+    // State for controlling marker visibility
+    const [showEventsMarkers, setShowEventsMarkers] = useState(false);
+    const [showAccommodationMarkers, setShowAccommodationMarkers] = useState(false);
+    const [showRestaurantsMarkers, setShowRestaurantsMarkers] = useState(false);
+    const [showNightlifeMarkers, setShowNightlifeMarkers] = useState(false);
+    const [showUrbanPlansLayers, setShowUrbanPlansLayers] = useState(false);
+    const [showHeritageMarkers, setShowHeritageMarkers] = useState(false);
+    // State for individual plan visibility
+    const [visiblePlans, setVisiblePlans] = useState<Set<string>>(new Set());
     // Calendar state
     const [currentCalendarDate, setCurrentCalendarDate] = useState(new Date());
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -244,6 +260,10 @@ export const MapcomponentClient: React.FC<MapProps> = ({
     // Event data loading
     const eventsFetcher = useFetcher<EventsResponse>();
     const [eventsData, setEventsData] = useState<Event[]>([]);
+    const [accommodationData, setAccommodationData] = useState<any[]>([]);
+    const [restaurantsData, setRestaurantsData] = useState<any[]>([]);
+    const [nightlifeData, setNightlifeData] = useState<any[]>([]);
+    const [urbanPlansData, setUrbanPlansData] = useState<any[]>([]);
 
     // Load events when calendar month changes or component mounts or calendar opens
     useEffect(() => {
@@ -255,22 +275,51 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         eventsFetcher.load(`/api/events?year=${year}&month=${month}`);
     }, [currentCalendarDate]);
     
+    // Also load accommodation, restaurants, and nightlife data on component mount
+    useEffect(() => {
+        console.log('🏨🍽️🎵 Loading tourism data on component mount');
+        const year = new Date().getFullYear();
+        const month = new Date().getMonth() + 1;
+        eventsFetcher.load(`/api/events?year=${year}&month=${month}`);
+    }, []);
+    
     // Also load events when calendar is opened
     useEffect(() => {
-        if (isCalendarOpen) {
+        if (activeSubAccordion === 'calendar') {
             const year = currentCalendarDate.getFullYear();
             const month = currentCalendarDate.getMonth() + 1;
             
             console.log(`🗓️ Calendar opened, loading events for ${year}-${month.toString().padStart(2, '0')}`);
             eventsFetcher.load(`/api/events?year=${year}&month=${month}`);
         }
-    }, [isCalendarOpen, currentCalendarDate]);
+    }, [activeSubAccordion, currentCalendarDate]);
 
     // Update events data when fetcher data changes
     useEffect(() => {
+        console.log('🔄 EventsFetcher data changed:', eventsFetcher.data);
+        
         if (eventsFetcher.data?.events) {
             console.log(`📅 Updated events data: ${eventsFetcher.data.events.length} events`);
             setEventsData(eventsFetcher.data.events);
+        }
+        if (eventsFetcher.data?.accommodation) {
+            console.log(`🏨 Updated accommodation data: ${eventsFetcher.data.accommodation.length} places`);
+            setAccommodationData(eventsFetcher.data.accommodation);
+            console.log('🏨 Sample accommodation data:', eventsFetcher.data.accommodation[0]);
+        }
+        if (eventsFetcher.data?.restaurants) {
+            console.log(`🍽️ Updated restaurants data: ${eventsFetcher.data.restaurants.length} places`);
+            setRestaurantsData(eventsFetcher.data.restaurants);
+            console.log('🍽️ Sample restaurant data:', eventsFetcher.data.restaurants[0]);
+        }
+        if (eventsFetcher.data?.nightlife) {
+            console.log(`🎵 Updated nightlife data: ${eventsFetcher.data.nightlife.length} places`);
+            setNightlifeData(eventsFetcher.data.nightlife);
+            console.log('🎵 Sample nightlife data:', eventsFetcher.data.nightlife[0]);
+        }
+        if (eventsFetcher.data?.urbanPlans) {
+            console.log(`📐 Updated urban plans data: ${eventsFetcher.data.urbanPlans.length} plans`);
+            setUrbanPlansData(eventsFetcher.data.urbanPlans);
         }
     }, [eventsFetcher.data]);
 
@@ -384,6 +433,11 @@ export const MapcomponentClient: React.FC<MapProps> = ({
         setActivePopupId(markerId);
     }, []);
     
+    // Função para controlar sub-accordions mutuamente exclusivos
+    const handleSubAccordionToggle = useCallback((subAccordionName: string) => {
+        setActiveSubAccordion(prev => prev === subAccordionName ? null : subAccordionName);
+    }, []);
+    
     // Create event marker icon
     const createEventIcon = useCallback((eventType: string) => {
         const icon = getEventIcon(eventType);
@@ -399,6 +453,211 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             popupAnchor: [0, -12]
         });
     }, [getEventIcon]);
+    
+    // Generate accommodation markers
+    const accommodationMarkers = useMemo(() => {
+        console.log('🏨 Accommodation markers - show:', showAccommodationMarkers, 'data length:', accommodationData.length);
+        if (!showAccommodationMarkers) return [];
+        
+        return accommodationData.map((place) => {
+            return (
+                <Marker
+                    key={`accommodation-${place._id}`}
+                    position={[place.location.lat, place.location.lng]}
+                    icon={L.divIcon({
+                        className: 'accommodation-marker',
+                        html: `
+                            <div style="background-color: #14B8A6; border-color: #FFFFFF; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                                🏨
+                            </div>
+                        `,
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10],
+                        popupAnchor: [0, -10]
+                    })}
+                    eventHandlers={{ click: () => handlePopupOpen(`accommodation-${place._id}`) }}
+                    zIndexOffset={800}
+                >
+                    <Popup autoClose={false} closeOnClick={false}>
+                        <div className="p-2 min-w-[200px]">
+                            <div className="flex items-center space-x-2 mb-2">
+                                <span className="text-lg">🏨</span>
+                                <h3 className="font-bold text-sm">{place.name}</h3>
+                            </div>
+                            <div className="text-xs text-gray-600">
+                                <div>{place.type} • {place.category}</div>
+                                <div>⭐ {place.rating} • {place.priceRange}</div>
+                                <div className="mt-1">{place.address}</div>
+                                <div className="mt-1">📞 {place.phone}</div>
+                            </div>
+                        </div>
+                    </Popup>
+                </Marker>
+            );
+        });
+    }, [accommodationData, showAccommodationMarkers, handlePopupOpen]);
+    
+    // Generate restaurants markers
+    const restaurantsMarkers = useMemo(() => {
+        console.log('🍽️ Restaurant markers - show:', showRestaurantsMarkers, 'data length:', restaurantsData.length);
+        if (!showRestaurantsMarkers) return [];
+        
+        return restaurantsData.map((place) => {
+            return (
+                <Marker
+                    key={`restaurant-${place._id}`}
+                    position={[place.location.lat, place.location.lng]}
+                    icon={L.divIcon({
+                        className: 'restaurant-marker',
+                        html: `
+                            <div style="background-color: #84CC16; border-color: #FFFFFF; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                                🍽️
+                            </div>
+                        `,
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10],
+                        popupAnchor: [0, -10]
+                    })}
+                    eventHandlers={{ click: () => handlePopupOpen(`restaurant-${place._id}`) }}
+                    zIndexOffset={800}
+                >
+                    <Popup autoClose={false} closeOnClick={false}>
+                        <div className="p-2 min-w-[200px]">
+                            <div className="flex items-center space-x-2 mb-2">
+                                <span className="text-lg">🍽️</span>
+                                <h3 className="font-bold text-sm">{place.name}</h3>
+                            </div>
+                            <div className="text-xs text-gray-600">
+                                <div>{place.cuisine} • {place.priceRange}</div>
+                                <div>⭐ {place.rating} • {place.openHours}</div>
+                                <div className="mt-1">{place.address}</div>
+                                <div className="mt-1">📞 {place.phone}</div>
+                                <div className="mt-1 font-semibold">Especialidades:</div>
+                                <ul className="list-disc list-inside text-xs">
+                                    {place.specialties.slice(0, 2).map((spec: string, idx: number) => (
+                                        <li key={idx}>{spec}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    </Popup>
+                </Marker>
+            );
+        });
+    }, [restaurantsData, showRestaurantsMarkers, handlePopupOpen]);
+    
+    // Generate nightlife markers
+    const nightlifeMarkers = useMemo(() => {
+        console.log('🎵 Nightlife markers - show:', showNightlifeMarkers, 'data length:', nightlifeData.length);
+        if (!showNightlifeMarkers) return [];
+        
+        return nightlifeData.map((place) => {
+            return (
+                <Marker
+                    key={`nightlife-${place._id}`}
+                    position={[place.location.lat, place.location.lng]}
+                    icon={L.divIcon({
+                        className: 'nightlife-marker',
+                        html: `
+                            <div style="background-color: #A855F7; border-color: #FFFFFF; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10px; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                                🎵
+                            </div>
+                        `,
+                        iconSize: [20, 20],
+                        iconAnchor: [10, 10],
+                        popupAnchor: [0, -10]
+                    })}
+                    eventHandlers={{ click: () => handlePopupOpen(`nightlife-${place._id}`) }}
+                    zIndexOffset={800}
+                >
+                    <Popup autoClose={false} closeOnClick={false}>
+                        <div className="p-2 min-w-[200px]">
+                            <div className="flex items-center space-x-2 mb-2">
+                                <span className="text-lg">🎵</span>
+                                <h3 className="font-bold text-sm">{place.name}</h3>
+                            </div>
+                            <div className="text-xs text-gray-600">
+                                <div>{place.type} • {place.priceRange}</div>
+                                <div>⭐ {place.rating} • {place.music}</div>
+                                <div className="mt-1">{place.address}</div>
+                                <div className="mt-1">📞 {place.phone}</div>
+                                <div className="mt-1">{place.openHours}</div>
+                                {place.outdoorSeating && <div className="mt-1 text-green-600">🪑 Espaço exterior</div>}
+                            </div>
+                        </div>
+                    </Popup>
+                </Marker>
+            );
+        });
+    }, [nightlifeData, showNightlifeMarkers, handlePopupOpen]);
+    
+    // Generate urban plans layers
+    const urbanPlansLayers = useMemo(() => {
+        if (activeAccordion !== 'planos' || !showUrbanPlansLayers) {
+            return [];
+        }
+        
+        return urbanPlansData.filter((plan) => visiblePlans.has(plan._id)).map((plan) => {
+            // Create a simple GeoJSON feature
+            const geoJsonData = {
+                type: "Feature" as const,
+                properties: {
+                    name: plan.name,
+                    color: plan.color
+                },
+                geometry: plan.geometry
+            };
+            
+            return (
+                <GeoJSON
+                    key={plan._id}
+                    data={geoJsonData}
+                    style={{
+                        fillColor: plan.color,
+                        color: plan.color,
+                        weight: 2,
+                        opacity: plan.opacity,
+                        fillOpacity: plan.opacity * 0.7
+                    }}
+                    eventHandlers={{
+                        click: (e) => {
+                            const popupContent = `
+                                <div className="p-3 min-w-[300px]">
+                                    <h3 className="font-bold text-lg mb-2" style="color: ${plan.color}">${plan.name}</h3>
+                                    <div className="text-sm text-gray-700 mb-2">${plan.description}</div>
+                                    <div className="text-xs text-gray-600">
+                                        <strong>Tipo:</strong> ${plan.type}<br>
+                                        <strong>Categoria:</strong> ${plan.category}
+                                    </div>
+                                    <div className="mt-2">
+                                        <strong className="text-sm">Regulamentação:</strong>
+                                        <ul className="list-disc list-inside text-xs mt-1 space-y-1">
+                                            ${plan.regulations.slice(0, 4).map((reg: string) => `<li>${reg}</li>`).join('')}
+                                            ${plan.regulations.length > 4 ? `<li class="text-gray-500">+${plan.regulations.length - 4} mais...</li>` : ''}
+                                        </ul>
+                                    </div>
+                                    <div className="mt-2 text-xs text-gray-500">
+                                        <strong>Coordenadas:</strong><br>
+                                        ${plan.geometry.coordinates[0].slice(0, 3).map(coord => `[${coord[1]}, ${coord[0]}]`).join(' → ')}<br>
+                                        ...e mais ${plan.geometry.coordinates[0].length - 3} pontos
+                                    </div>
+                                </div>
+                            `;
+                            
+                            // Create popup at click location using the map instance from context
+                            const mapInstance = e.target._map;
+                            if (mapInstance) {
+                                const popup = L.popup()
+                                    .setLatLng(e.latlng)
+                                    .setContent(popupContent)
+                                    .openOn(mapInstance);
+                            }
+                        }
+                    }}
+                />
+            );
+        });
+    }, [urbanPlansData, activeAccordion, showUrbanPlansLayers, visiblePlans]);
     
     // Generate event markers for selected date
     const eventMarkers = useMemo(() => {
@@ -747,12 +1006,14 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         center={center} 
                         zoom={zoom} 
                         maxZoom={MAP_CONFIG.ZOOM.MAX}
+                        zoomControl={false}
                         style={{ height: '100%', width: '100%', zIndex: 1 }}
                         bounds={MAP_CONFIG.BOUNDS.SOUTHWEST && MAP_CONFIG.BOUNDS.NORTHEAST ? [
                             MAP_CONFIG.BOUNDS.SOUTHWEST, 
                             MAP_CONFIG.BOUNDS.NORTHEAST
                         ] : undefined}
                     >
+                        <ZoomControl position="bottomright" />
                         {geolocation.position && isTracking && (
                             <RecenterAutomatically coords={geolocation.position} />
                         )}
@@ -808,7 +1069,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                 {bucketData.filter((item) => {
                                     const tipo = item.tipo?.titulo || defaultTypeKey;
                                     const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
-                                    return item.coordenadas && visibleTypes.has(englishKey);
+                                    return item.coordenadas && visibleTypes.has(englishKey) && showHeritageMarkers;
                                 }).map((item) => {
                                     const tipo = item.tipo?.titulo || defaultTypeKey;
                                     const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
@@ -831,23 +1092,19 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                         <h4 className="historical-heading text-sm leading-tight">{item.title}</h4>
                                                         <div className="flex flex-wrap gap-1 mt-1">
                                                             <span className="text-[7px] bg-olive/10 text-olive px-1.5 py-0.5 rounded uppercase font-bold organic-border">{item.tipo?.titulo || 'Património'}</span>
-                                                        </div>
-                                                        <div className="mt-1 pt-1.5 border-t border-deep-brown/20 flex justify-between items-center">
-                                                            <Link to={`/heritages/${item._id}`} className="text-antique-gold font-black text-[9px] uppercase">Detalhes →</Link>
-                                                            <button onClick={(e) => { e.stopPropagation(); handleOpenAR(item); }} className="bg-deep-brown text-parchment px-2 py-1 rounded text-[8px] font-bold">AR</button>
-                                                        </div>
                                                     </div>
                                                 </div>
-                                            </Popup>
-                                        </Marker>
-                                    );
-                                })}
+                                            </div>
+                                        </Popup>
+                                    </Marker>
+                                );
+                            })}
                             </MarkerClusterGroup>
                         ) : (
                             bucketData.filter((item) => {
                                 const tipo = item.tipo?.titulo || defaultTypeKey;
                                 const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
-                                return item.coordenadas && visibleTypes.has(englishKey);
+                                return item.coordenadas && visibleTypes.has(englishKey) && showHeritageMarkers;
                             }).map((item) => {
                                 const tipo = item.tipo?.titulo || defaultTypeKey;
                                 const englishKey = reverseHeritageTypes[tipo] || 'civilArchitecture';
@@ -875,21 +1132,49 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         {/* Event markers for selected date */}
                         {eventMarkers}
                         
+                        {/* Accommodation markers */}
+                        {accommodationMarkers}
+                        
+                        {/* Restaurant markers */}
+                        {restaurantsMarkers}
+                        
+                        {/* Nightlife markers */}
+                        {nightlifeMarkers}
+                        
+                        {/* Urban plans layers */}
+                        {urbanPlansLayers}
+                        
                     </MapContainer>
             </div>
 
             {/* Accordions container - absolute top left */}
             <div className="absolute top-4 left-4 flex flex-col z-[1000]">
                 {/* Legenda do Mapa accordion */}
-                <div className="w-64 bg-parchment border border-deep-brown/20 rounded-lg shadow-md organic-shadow">
+                <div className="w-64 bg-parchment/70 border border-deep-brown/20 rounded-lg shadow-md organic-shadow backdrop-blur-sm">
                     <button
                         onClick={() => setActiveAccordion(activeAccordion === 'legend' ? '' : 'legend')}
                         className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5 transition-colors rounded-t-lg"
                     >
-                        <span className="text-xs font-serif font-bold text-deep-brown">
-                            {activeAccordion === 'legend' ? 'Legenda do Mapa' : 'Património'}
-                        </span>
-                        <svg className={`w-4 h-4 text-deep-brown transition-transform ${activeAccordion === 'legend' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        <div className="flex items-center space-x-2">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setShowHeritageMarkers(!showHeritageMarkers); }}
+                                className="p-1 hover:bg-deep-brown/10 rounded"
+                                title={showHeritageMarkers ? 'Esconder património' : 'Mostrar património'}
+                            >
+                                {showHeritageMarkers ? (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                    </svg>
+                                )}
+                            </button>
+                            <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'legend' ? 'Património' : 'Mostrar Património'}</span>
+                        </div>
+                        <svg className={`w-4 h-4 text-deep-brown transition-transform ${activeAccordion === 'legend' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
                     </button>
                     <div className={`transition-all duration-300 ease-in-out ${activeAccordion === 'legend' ? 'max-h-[500px] opacity-100 overflow-y-auto' : 'max-h-0 opacity-0 overflow-hidden'}`}>
                         <div className="px-3 pb-3">
@@ -929,21 +1214,39 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 </div>
 
                 {/* Eventos accordion */}
-                <div className="w-64 bg-parchment border border-deep-brown/20 rounded-lg shadow-md organic-shadow">
+                <div className="w-64 bg-parchment/70 border border-deep-brown/20 rounded-lg shadow-md organic-shadow backdrop-blur-sm">
                     <button onClick={() => setActiveAccordion(activeAccordion === 'eventos' ? '' : 'eventos')} className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5 transition-colors rounded-t-lg">
-                        <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'eventos' ? 'Eventos' : '🎭 Mostrar Eventos'}</span>
+                        <div className="flex items-center space-x-2">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setShowEventsMarkers(!showEventsMarkers); }}
+                                className="p-1 hover:bg-deep-brown/10 rounded"
+                                title={showEventsMarkers ? 'Esconder eventos' : 'Mostrar eventos'}
+                            >
+                                {showEventsMarkers ? (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                    </svg>
+                                )}
+                            </button>
+                            <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'eventos' ? 'Eventos' : 'Mostrar Eventos'}</span>
+                        </div>
                         <svg className={`w-4 h-4 text-deep-brown transition-transform ${activeAccordion === 'eventos' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                     </button>
                     <div className={`transition-all duration-300 ease-in-out ${activeAccordion === 'eventos' ? 'max-h-[600px] overflow-y-auto opacity-100' : 'max-h-0 overflow-hidden opacity-0'}`}>
                         <div className="px-3 pb-3">
                             {/* Calendar subsection - closed by default */}
                             <div className="mb-2 bg-blue-50 border border-blue-200 rounded-lg">
-                                <button onClick={() => setIsCalendarOpen(!isCalendarOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-blue-800">📅 Calendário de Eventos</span>
-                                    <svg className={`w-3 h-3 text-blue-800 transition-transform ${isCalendarOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                <button onClick={() => handleSubAccordionToggle('calendar')} className="w-full px-3 py-2 flex items-center justify-between">
+                                    <span className="text-xs font-serif font-bold text-blue-800">Calendário de Eventos</span>
+                                    <svg className={`w-3 h-3 text-blue-800 transition-transform ${activeSubAccordion === 'calendar' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                                 </button>
                                 
-                                <div className={`transition-all ${isCalendarOpen ? 'max-h-96 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                <div className={`transition-all ${activeSubAccordion === 'calendar' ? 'max-h-96 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
                                     <div className="text-xs text-blue-700">
                                         {/* Header de Navegação */}
                                         <div className="flex items-center justify-between mb-3 px-1">
@@ -1095,32 +1398,163 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 </div>
 
                 {/* Informações turísticas accordion */}
-                <div className="w-64 bg-parchment border border-deep-brown/20 rounded-lg shadow-md organic-shadow">
+                <div className="w-64 bg-parchment/70 border border-deep-brown/20 rounded-lg shadow-md organic-shadow backdrop-blur-sm">
                     <button onClick={() => setActiveAccordion(activeAccordion === 'turisticas' ? '' : 'turisticas')} className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5">
-                        <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'turisticas' ? 'Informações turísticas' : '🏨 Mostrar Informações'}</span>
+                        <div className="flex items-center space-x-2">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setShowAccommodationMarkers(!showAccommodationMarkers); setShowRestaurantsMarkers(!showRestaurantsMarkers); setShowNightlifeMarkers(!showNightlifeMarkers); }}
+                                className="p-1 hover:bg-deep-brown/10 rounded"
+                                title={showAccommodationMarkers && showRestaurantsMarkers && showNightlifeMarkers ? 'Esconder informações turísticas' : 'Mostrar informações turísticas'}
+                            >
+                                {(showAccommodationMarkers && showRestaurantsMarkers && showNightlifeMarkers) ? (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                    </svg>
+                                )}
+                            </button>
+                            <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'turisticas' ? 'Informações turísticas' : 'Mostrar Informações'}</span>
+                        </div>
                         <svg className={`w-4 h-4 text-deep-brown transition-transform ${activeAccordion === 'turisticas' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
                     </button>
                     <div className={`transition-all duration-300 ease-in-out ${activeAccordion === 'turisticas' ? 'max-h-[600px] opacity-100' : 'max-h-0 overflow-hidden'}`}>
                         <div className="px-3 pb-3">
                             {/* Alojamento subsection */}
                             <div className="mb-2 bg-teal-50 border border-teal-200 rounded-lg">
-                                <button onClick={() => setIsAlojamentoOpen(!isAlojamentoOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-teal-800">Alojamento</span>
-                                    <svg className={`w-3 h-3 text-teal-800 transition-transform ${isAlojamentoOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                <button onClick={() => handleSubAccordionToggle('accommodation')} className="w-full px-3 py-2 flex items-center justify-between">
+                                    <div className="flex items-center space-x-2">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setShowAccommodationMarkers(!showAccommodationMarkers); }}
+                                            className="p-1 hover:bg-teal-100 rounded"
+                                            title={showAccommodationMarkers ? 'Esconder alojamento' : 'Mostrar alojamento'}
+                                        >
+                                            {showAccommodationMarkers ? (
+                                                <svg className="w-3 h-3 text-teal-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                            ) : (
+                                                <svg className="w-3 h-3 text-teal-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                        <span className="text-xs font-serif font-bold text-teal-800">Alojamento</span>
+                                    </div>
+                                    <svg className={`w-3 h-3 text-teal-800 transition-transform ${activeSubAccordion === 'accommodation' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                                 </button>
-                                <div className={`transition-all ${isAlojamentoOpen ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                    <p className="text-xs">Conteúdo para alojamento...</p>
+                                <div className={`transition-all ${activeSubAccordion === 'accommodation' ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                    <p className="text-xs text-teal-700">
+                                        {accommodationData.length} unidades de alojamento disponíveis
+                                    </p>
+                                    <div className="mt-2 space-y-1">
+                                        {accommodationData.slice(0, 3).map((place) => (
+                                            <div key={place._id} className="text-xs bg-white p-2 rounded border border-teal-100">
+                                                <div className="font-semibold text-teal-900">{place.name}</div>
+                                                <div className="text-teal-700">{place.type} • {place.category}</div>
+                                                <div className="text-teal-600">⭐ {place.rating} • {place.priceRange}</div>
+                                            </div>
+                                        ))}
+                                        {accommodationData.length > 3 && (
+                                            <div className="text-xs text-teal-600 italic">
+                                                +{accommodationData.length - 3} mais unidades...
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
                             {/* Restauração subsection */}
                             <div className="mb-2 bg-lime-50 border border-lime-200 rounded-lg">
-                                <button onClick={() => setIsRestauracaoOpen(!isRestauracaoOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-lime-800">Restauração</span>
-                                    <svg className={`w-3 h-3 text-lime-800 transition-transform ${isRestauracaoOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                <button onClick={() => handleSubAccordionToggle('restaurants')} className="w-full px-3 py-2 flex items-center justify-between">
+                                    <div className="flex items-center space-x-2">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setShowRestaurantsMarkers(!showRestaurantsMarkers); }}
+                                            className="p-1 hover:bg-lime-100 rounded"
+                                            title={showRestaurantsMarkers ? 'Esconder restaurantes' : 'Mostrar restaurantes'}
+                                        >
+                                            {showRestaurantsMarkers ? (
+                                                <svg className="w-3 h-3 text-lime-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                            ) : (
+                                                <svg className="w-3 h-3 text-lime-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                        <span className="text-xs font-serif font-bold text-lime-800">Restauração</span>
+                                    </div>
+                                    <svg className={`w-3 h-3 text-lime-800 transition-transform ${activeSubAccordion === 'restaurants' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                                 </button>
-                                <div className={`transition-all ${isRestauracaoOpen ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                    <p className="text-xs">Conteúdo para restauração...</p>
+                                <div className={`transition-all ${activeSubAccordion === 'restaurants' ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                    <p className="text-xs text-lime-700">
+                                        {restaurantsData.length} restaurantes disponíveis
+                                    </p>
+                                    <div className="mt-2 space-y-1">
+                                        {restaurantsData.slice(0, 3).map((place) => (
+                                            <div key={place._id} className="text-xs bg-white p-2 rounded border border-lime-100">
+                                                <div className="font-semibold text-lime-900">{place.name}</div>
+                                                <div className="text-lime-700">{place.cuisine} • {place.priceRange}</div>
+                                                <div className="text-lime-600">⭐ {place.rating} • {place.openHours}</div>
+                                            </div>
+                                        ))}
+                                        {restaurantsData.length > 3 && (
+                                            <div className="text-xs text-lime-600 italic">
+                                                +{restaurantsData.length - 3} mais restaurantes...
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Nightlife subsection */}
+                            <div className="mb-2 bg-purple-50 border border-purple-200 rounded-lg">
+                                <button onClick={() => handleSubAccordionToggle('nightlife')} className="w-full px-3 py-2 flex items-center justify-between">
+                                    <div className="flex items-center space-x-2">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); setShowNightlifeMarkers(!showNightlifeMarkers); }}
+                                            className="p-1 hover:bg-purple-100 rounded"
+                                            title={showNightlifeMarkers ? 'Esconder nightlife' : 'Mostrar nightlife'}
+                                        >
+                                            {showNightlifeMarkers ? (
+                                                <svg className="w-3 h-3 text-purple-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                            ) : (
+                                                <svg className="w-3 h-3 text-purple-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                                </svg>
+                                            )}
+                                        </button>
+                                        <span className="text-xs font-serif font-bold text-purple-800">Nightlife</span>
+                                    </div>
+                                    <svg className={`w-3 h-3 text-purple-800 transition-transform ${activeSubAccordion === 'nightlife' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                </button>
+                                <div className={`transition-all ${activeSubAccordion === 'nightlife' ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                    <p className="text-xs text-purple-700">
+                                        {nightlifeData.length} lugares de nightlife disponíveis
+                                    </p>
+                                    <div className="mt-2 space-y-1">
+                                        {nightlifeData.slice(0, 3).map((place) => (
+                                            <div key={place._id} className="text-xs bg-white p-2 rounded border border-purple-100">
+                                                <div className="font-semibold text-purple-900">{place.name}</div>
+                                                <div className="text-purple-700">{place.type} • {place.priceRange}</div>
+                                                <div className="text-purple-600">⭐ {place.rating}</div>
+                                            </div>
+                                        ))}
+                                        {nightlifeData.length > 3 && (
+                                            <div className="text-xs text-purple-600 italic">
+                                                +{nightlifeData.length - 3} mais lugares...
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
 
@@ -1150,15 +1584,97 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                 </div>
 
                 {/* Planos online accordion */}
-                <div className="w-64 bg-parchment border border-deep-brown/20 rounded-lg shadow-md organic-shadow">
+                <div className="w-64 bg-parchment/70 border border-deep-brown/20 rounded-lg shadow-md organic-shadow backdrop-blur-sm">
                     <button onClick={() => setActiveAccordion(activeAccordion === 'planos' ? '' : 'planos')} className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5">
-                        <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'planos' ? 'Planos online' : '📋 Mostrar Planos'}</span>
+                        <div className="flex items-center space-x-2">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setShowUrbanPlansLayers(!showUrbanPlansLayers); }}
+                                className="p-1 hover:bg-deep-brown/10 rounded"
+                                title={showUrbanPlansLayers ? 'Esconder planos urbanos' : 'Mostrar planos urbanos'}
+                            >
+                                {showUrbanPlansLayers ? (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                    </svg>
+                                )}
+                            </button>
+                            <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'planos' ? 'Planos online' : 'Mostrar Planos'}</span>
+                        </div>
                         <svg className={`w-4 h-4 text-deep-brown transition-transform ${activeAccordion === 'planos' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
                     </button>
                     <div className={`transition-all duration-300 ease-in-out ${activeAccordion === 'planos' ? 'max-h-[600px] opacity-100' : 'max-h-0 overflow-hidden'}`}>
                         <div className="px-3 pb-3">
-                            <div className="mb-2 bg-blue-50 border border-blue-200 rounded-lg">
-                                <button onClick={() => setIsTerritorioOpen(!isTerritorioOpen)} className="w-full px-3 py-2 text-xs font-bold text-blue-800">Territorio</button>
+                            <div className="mb-2 bg-gray-50 border border-gray-200 rounded-lg">
+                                <button onClick={() => handleSubAccordionToggle('plans')} className="w-full px-3 py-2 flex items-center justify-between">
+                                    <span className="text-xs font-serif font-bold text-gray-800">Planos Urbanos</span>
+                                    <svg className={`w-3 h-3 text-gray-800 transition-transform ${activeSubAccordion === 'plans' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                </button>
+                                <div className={`transition-all ${activeSubAccordion === 'plans' ? 'max-h-96 overflow-y-auto opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
+                                    <p className="text-xs text-gray-700 mb-2">
+                                        {urbanPlansData.length} planos disponíveis
+                                    </p>
+                                    <div className="space-y-2">
+                                        {urbanPlansData.map((plan) => {
+                                            const isPlanVisible = visiblePlans.has(plan._id);
+                                            const togglePlanVisibility = () => {
+                                                setVisiblePlans(prev => {
+                                                    const newSet = new Set(prev);
+                                                    if (newSet.has(plan._id)) {
+                                                        newSet.delete(plan._id);
+                                                    } else {
+                                                        newSet.add(plan._id);
+                                                    }
+                                                    return newSet;
+                                                });
+                                            };
+                                            
+                                            return (
+                                                <div key={plan._id} className="text-xs bg-white p-2 rounded border border-gray-100">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <div className="flex items-center space-x-2">
+                                                            <button 
+                                                                onClick={togglePlanVisibility}
+                                                                className="p-1 hover:bg-gray-100 rounded"
+                                                                title={isPlanVisible ? 'Esconder plano' : 'Mostrar plano'}
+                                                            >
+                                                                {isPlanVisible ? (
+                                                                    <svg className="w-3 h-3 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                                    </svg>
+                                                                ) : (
+                                                                    <svg className="w-3 h-3 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                                                    </svg>
+                                                                )}
+                                                            </button>
+                                                            <span className="font-semibold text-gray-900">{plan.name}</span>
+                                                        </div>
+                                                        <div className="w-4 h-4 rounded" style={{ backgroundColor: plan.color, opacity: plan.opacity }}></div>
+                                                    </div>
+                                                <div className="text-gray-700 text-xs">{plan.type}</div>
+                                                <div className="text-gray-600 text-xs mt-1">{plan.description}</div>
+                                                <div className="mt-1 text-xs text-gray-500">
+                                                    <strong>Regulamentação:</strong>
+                                                    <ul className="list-disc list-inside mt-1">
+                                                        {plan.regulations.slice(0, 2).map((reg: string, idx: number) => (
+                                                            <li key={idx} className="text-xs">{reg}</li>
+                                                        ))}
+                                                        {plan.regulations.length > 2 && (
+                                                            <li className="text-xs italic">+{plan.regulations.length - 2} mais...</li>
+                                                        )}
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
