@@ -1339,60 +1339,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                 </div>
                             </div>
 
-                            {/* Festivais subsection */}
-                            <div className="mb-2 bg-purple-50 border border-purple-200 rounded-lg">
-                                <button onClick={() => setIsFestivaisOpen(!isFestivaisOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-purple-800">Festivais</span>
-                                    <svg className={`w-3 h-3 text-purple-800 transition-transform ${isFestivaisOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                </button>
-                                <div className={`transition-all ${isFestivaisOpen ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                    <p className="text-xs">Conteúdo para festivais...</p>
-                                </div>
-                            </div>
-
-                            {/* Feiras subsection */}
-                            <div className="mb-2 bg-orange-50 border border-orange-200 rounded-lg">
-                                <button onClick={() => setIsFeirasOpen(!isFeirasOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-orange-800">Feiras</span>
-                                    <svg className={`w-3 h-3 text-orange-800 transition-transform ${isFeirasOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                </button>
-                                <div className={`transition-all ${isFeirasOpen ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                    <p className="text-xs">Conteúdo para feiras...</p>
-                                </div>
-                            </div>
-
-                            {/* Espetáculos subsection */}
-                            <div className="mb-2 bg-pink-50 border border-pink-200 rounded-lg">
-                                <button onClick={() => setIsEspectaculosOpen(!isEspectaculosOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-pink-800">Espetáculos</span>
-                                    <svg className={`w-3 h-3 text-pink-800 transition-transform ${isEspectaculosOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                </button>
-                                <div className={`transition-all ${isEspectaculosOpen ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                    <p className="text-xs">Conteúdo para espetáculos...</p>
-                                </div>
-                            </div>
-
-                            {/* Desportivos subsection */}
-                            <div className="mb-2 bg-indigo-50 border border-indigo-200 rounded-lg">
-                                <button onClick={() => setIsDesportivosOpen(!isDesportivosOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-indigo-800">Desportivos</span>
-                                    <svg className={`w-3 h-3 text-indigo-800 transition-transform ${isDesportivosOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                </button>
-                                <div className={`transition-all ${isDesportivosOpen ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                    <p className="text-xs">Conteúdo para eventos desportivos...</p>
-                                </div>
-                            </div>
-
-                            {/* Outros eventos subsection */}
-                            <div className="mb-2 bg-gray-50 border border-gray-200 rounded-lg">
-                                <button onClick={() => setIsOutrosEventosOpen(!isOutrosEventosOpen)} className="w-full px-3 py-2 flex items-center justify-between">
-                                    <span className="text-xs font-serif font-bold text-gray-800">Outros eventos</span>
-                                    <svg className={`w-3 h-3 text-gray-800 transition-transform ${isOutrosEventosOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                </button>
-                                <div className={`transition-all ${isOutrosEventosOpen ? 'max-h-40 opacity-100 p-2' : 'max-h-0 opacity-0 overflow-hidden'}`}>
-                                    <p className="text-xs">Conteúdo para outros tipos de eventos...</p>
-                                </div>
-                            </div>
+                            
                         </div>
                     </div>
                 </div>
@@ -1582,7 +1529,39 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         </div>
                     </div>
                 </div>
+ {/* Condicionantes accordion */}
+                <div className="w-64 bg-parchment/70 border border-deep-brown/20 rounded-lg shadow-md organic-shadow backdrop-blur-sm">
+                    <button onClick={() => setActiveAccordion(activeAccordion === 'condicionantes' ? '' : 'condicionantes')} className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5 transition-colors rounded-t-lg">
+                        <div className="flex items-center space-x-2">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setShowEventsMarkers(!showEventsMarkers); }}
+                                className="p-1 hover:bg-deep-brown/10 rounded"
+                                title={showEventsMarkers ? 'Esconder condicionantes' : 'Mostrar condicionantes'}
+                            >
+                                {showEventsMarkers ? (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="w-4 h-4 text-deep-brown" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                    </svg>
+                                )}
+                            </button>
+                            <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'condicionantes' ? 'Condicionantes' : 'Mostrar Condicionantes'}</span>
+                        </div>
+                        <svg className={`w-4 h-4 text-deep-brown transition-transform ${activeAccordion === 'condicionantes' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                    <div className={`transition-all duration-300 ease-in-out ${activeAccordion === 'eventos' ? 'max-h-[600px] overflow-y-auto opacity-100' : 'max-h-0 overflow-hidden opacity-0'}`}>
+                        <div className="px-3 pb-3">
+                            {/* Calendar subsection - closed by default */}
+                            
 
+                          
+                        </div>
+                    </div>
+                </div>
                 {/* Planos online accordion */}
                 <div className="w-64 bg-parchment/70 border border-deep-brown/20 rounded-lg shadow-md organic-shadow backdrop-blur-sm">
                     <button onClick={() => setActiveAccordion(activeAccordion === 'planos' ? '' : 'planos')} className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5">
@@ -1682,7 +1661,6 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             </div>
         </div>
 
-            {activeARItem && <ARPanel items={bucketData} onClose={handleCloseAR} />}
         </div>
     );
 };
