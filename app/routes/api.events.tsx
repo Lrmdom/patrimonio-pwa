@@ -974,37 +974,37 @@ export async function loader({ request }: LoaderFunctionArgs) {
       },
       
       // 🛑 CONDICIONANTES
-      {
-        _id: "cond-001",
-        name: "REN - Reserva Ecológica Nacional",
-        type: "Condicionante",
-        category: "ren",
-        description: "Proteção de ecossistemas e valores naturais",
-        color: "#006400",
-        opacity: 0.7,
-        geometry: {
-          type: "Polygon",
-          coordinates: [[
-            [-7.6480, 37.1340],
-            [-7.6470, 37.1345],
-            [-7.6460, 37.1350],
-            [-7.6450, 37.1352],
-            [-7.6440, 37.1350],
-            [-7.6435, 37.1345],
-            [-7.6440, 37.1340],
-            [-7.6450, 37.1338],
-            [-7.6460, 37.1338],
-            [-7.6470, 37.1340],
-            [-7.6480, 37.1340]
-          ]]
-        },
-        regulations: [
-          "Proibido construção",
-          "Proteção de linhas de água",
-          "Manutenção de vegetação ripícola",
-          "Acesso condicionado"
-        ]
-      },
+{
+  "_id": "cond-001",
+  "name": "REN - Reserva Ecológica Nacional",
+  "type": "Condicionante",
+  "category": "ren",
+  "description": "Proteção de ecossistemas e valores naturais (Versão Expandida 10x)",
+  "color": "#006400",
+  "opacity": 0.7,
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[
+      [-7.66225, 37.1299],
+      [-7.65225, 37.1349],
+      [-7.64225, 37.1399],
+      [-7.63225, 37.1419],
+      [-7.62225, 37.1399],
+      [-7.61725, 37.1349],
+      [-7.62225, 37.1299],
+      [-7.63225, 37.1279],
+      [-7.64225, 37.1279],
+      [-7.65225, 37.1299],
+      [-7.66225, 37.1299]
+    ]]
+  },
+  "regulations": [
+    "Proibido construção",
+    "Proteção de linhas de água",
+    "Manutenção de vegetação ripícola",
+    "Acesso condicionado"
+  ]
+},
       {
         _id: "cond-002",
         name: "RAN - Reserva Agrícola Nacional",

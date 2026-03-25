@@ -106,6 +106,73 @@ interface MapProps {
     locale?: string;
 }
 
+// Function to get constraint style (supports both tc_* and simple names)
+const getCondicionanteStyle = (cond: any, isPatternLayer = false) => {
+    // Mapping to support both API names (tc_*) and database simple names
+    const corLinha = cond.cor || cond.tc_cor || '#3388ff';
+    const corFundo = cond.preenchimento || cond.tc_preenchimento || corLinha;
+    const padrao = cond.padrao_visual || cond.tc_padrao_visual || 'solido';
+    const opacidadeBase = cond.opacidade || cond.tc_opacidade || 0.4;
+    const peso = cond.peso || cond.tc_peso || 2;
+
+    // If we're drawing the top layer (SVG pattern)
+    if (isPatternLayer && padrao !== 'solido') {
+        return {
+            stroke: false,
+            fillColor: `url(#pattern-${padrao})`,
+            fillOpacity: 1, // Pattern itself must be opaque to be visible
+            interactive: false
+        };
+    }
+
+    // Base layer (solid color and border)
+    return {
+        color: corLinha,
+        weight: peso,
+        fillColor: corFundo,
+        fillOpacity: opacidadeBase * 0.4, // Subtle background
+        interactive: true
+    };
+};
+
+// Function to inject SVG patterns for constraints
+const injectSVGPatterns = () => {
+    if (document.getElementById('map-svg-patterns')) return true;
+
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svgContainer = document.createElementNS(svgNS, "svg");
+    svgContainer.id = 'map-svg-patterns';
+    svgContainer.setAttribute('style', 'position: absolute; width: 0; height: 0; overflow: hidden;');
+
+    const defs = document.createElementNS(svgNS, "defs");
+    defs.innerHTML = `
+      <pattern id="pattern-listras" x="0" y="0" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="10" style="stroke: black; stroke-width: 3; stroke-opacity: 0.3" />
+      </pattern>
+      <pattern id="pattern-ondas" x="0" y="0" width="20" height="12" patternUnits="userSpaceOnUse">
+        <path d="M0 6 Q 5 0, 10 6 T 20 6" fill="none" style="stroke: black; stroke-width: 2.5; stroke-opacity: 0.3" />
+      </pattern>
+      <pattern id="pattern-pontos" x="0" y="0" width="12" height="12" patternUnits="userSpaceOnUse">
+        <circle cx="6" cy="6" r="2.5" style="fill: black; fill-opacity: 0.3" />
+      </pattern>
+      <pattern id="pattern-grade" x="0" y="0" width="15" height="15" patternUnits="userSpaceOnUse">
+        <rect width="15" height="15" fill="none" style="stroke: black; stroke-width: 2; stroke-opacity: 0.3" />
+      </pattern>
+      <pattern id="pattern-gradiente" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:black;stop-opacity:0.1" />
+          <stop offset="100%" style="stop-color:black;stop-opacity:0.3" />
+        </linearGradient>
+        <rect width="20" height="20" fill="url(#grad1)" />
+      </pattern>
+    `;
+    
+    svgContainer.appendChild(defs);
+    document.body.appendChild(svgContainer);
+    console.log("✅ SVG patterns injected globally");
+    return true;
+};
+
 // Componente para controlar popups no nível do mapa
 const PopupController: React.FC<{ activePopupId: string | null; setActivePopupId: (id: string | null) => void }> = ({ activePopupId, setActivePopupId }) => {
     const map = useMap();
@@ -128,6 +195,22 @@ function RecenterAutomatically({ coords }: { coords: L.LatLngExpression }) {
     useEffect(() => {
         if (coords) map.setView(coords, map.getZoom(), { animate: true });
     }, [coords, map]);
+    return null;
+}
+
+// Componente para recentrar na posição padrão (Tavira)
+function RecenterToDefault({ center, zoom, isTracking }: { center: L.LatLngExpression; zoom: number; isTracking: boolean }) {
+    const map = useMap();
+    const [wasTracking, setWasTracking] = useState(true);
+    
+    useEffect(() => {
+        // Se estava a seguir e agora não está, recentrar
+        if (wasTracking && !isTracking) {
+            map.setView(center, zoom, { animate: true });
+        }
+        setWasTracking(isTracking);
+    }, [isTracking, wasTracking, center, zoom, map]);
+    
     return null;
 }
 
@@ -353,6 +436,19 @@ export const MapcomponentClient: React.FC<MapProps> = ({
             setConstraintsData(constraintsFetcher.data.constraints);
         }
     }, [constraintsFetcher.data]);
+
+    // Inject SVG patterns when constraints are visible
+    useEffect(() => {
+        if (showConstraintsMarkers && visibleConstraints.length > 0) {
+            // Inject patterns globally once
+            injectSVGPatterns();
+        }
+    }, [showConstraintsMarkers, visibleConstraints]);
+
+    // Also inject patterns on component mount to ensure they're available
+    useEffect(() => {
+        injectSVGPatterns();
+    }, []);
 
     // Group events by date for calendar badges
     const eventsByDate = useMemo(() => {
@@ -1123,6 +1219,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         {geolocation.position && isTracking && (
                             <RecenterAutomatically coords={geolocation.position} />
                         )}
+                        <RecenterToDefault center={center} zoom={zoom} isTracking={isTracking} />
 
                         <TileLayer
                             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -1274,31 +1371,35 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                             };
                             
                             return (
-                                <GeoJSON 
-                                    key={`constraint-${constraint.id}`}
-                                    data={geoJSONFeature}
-                                    style={() => ({
-                                        color: geoJSONFeature.properties.cor,
-                                        weight: geoJSONFeature.properties.peso,
-                                        fillColor: geoJSONFeature.properties.cor,
-                                        fillOpacity: geoJSONFeature.properties.opacidade,
-                                        dashArray: geoJSONFeature.properties.padrao === 'solido' ? undefined : '5,5'
-                                    })}
-                                    onEachFeature={(feature, layer) => {
-                                        // Add popup
-                                        const popupContent = `
-                                            <div class="p-2 w-[200px]">
-                                                <h4 class="font-bold text-sm mb-1">🚧 ${feature.properties.descricao}</h4>
-                                                <div class="text-xs text-gray-600 space-y-1">
-                                                    <div>📋 ${feature.properties.tipo}</div>
-                                                    <div>📅 ${constraint.valid_from ? new Date(constraint.valid_from).toLocaleDateString('pt-PT') : 'Sem data'}</div>
-                                                    ${constraint.valid_to ? `<div>📅 ${new Date(constraint.valid_to).toLocaleDateString('pt-PT')}</div>` : ''}
+                                <React.Fragment key={`constraint-${constraint.id}`}>
+                                    {/* CAMADA 1: O Fundo Colorido */}
+                                    <GeoJSON 
+                                        data={geoJSONFeature}
+                                        style={() => getCondicionanteStyle(constraint, false)}
+                                        onEachFeature={(feature, layer) => {
+                                            // Add popup
+                                            const popupContent = `
+                                                <div class="p-2 w-[200px]">
+                                                    <h4 class="font-bold text-sm mb-1">🚧 ${feature.properties.descricao}</h4>
+                                                    <div class="text-xs text-gray-600 space-y-1">
+                                                        <div>📋 ${feature.properties.tipo}</div>
+                                                        <div>📅 ${constraint.valid_from ? new Date(constraint.valid_from).toLocaleDateString('pt-PT') : 'Sem data'}</div>
+                                                        ${constraint.valid_to ? `<div>📅 ${new Date(constraint.valid_to).toLocaleDateString('pt-PT')}</div>` : ''}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        `;
-                                        layer.bindPopup(popupContent);
-                                    }}
-                                />
+                                            `;
+                                            layer.bindPopup(popupContent);
+                                        }}
+                                    />
+                                    
+                                    {/* CAMADA 2: O Padrão (Apenas se não for sólido) */}
+                                    {((constraint.padrao_visual || constraint.tc_padrao_visual) && (constraint.padrao_visual || constraint.tc_padrao_visual) !== 'solido') && (
+                                        <GeoJSON 
+                                            data={geoJSONFeature}
+                                            style={() => getCondicionanteStyle(constraint, true)}
+                                        />
+                                    )}
+                                </React.Fragment>
                             );
                         })}
                         
@@ -1326,9 +1427,9 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                         className="w-full px-3 py-2 flex items-center justify-between hover:bg-deep-brown/5 transition-colors rounded-t-lg"
                     >
                         <div className="flex items-center space-x-2">
-                            <button 
+                            <span 
                                 onClick={(e) => { e.stopPropagation(); setShowHeritageMarkers(!showHeritageMarkers); }}
-                                className="p-1 hover:bg-deep-brown/10 rounded"
+                                className="p-1 hover:bg-deep-brown/10 rounded cursor-pointer"
                                 title={showHeritageMarkers ? 'Esconder património' : 'Mostrar património'}
                             >
                                 {showHeritageMarkers ? (
@@ -1341,7 +1442,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
                                     </svg>
                                 )}
-                            </button>
+                            </span>
                             <span className="text-xs font-serif font-bold text-deep-brown">{activeAccordion === 'legend' ? 'Património' : 'Mostrar Património'}</span>
                         </div>
                         <svg className={`w-4 h-4 text-deep-brown transition-transform ${activeAccordion === 'legend' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" /></svg>
@@ -1634,9 +1735,9 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                             <div className="mb-2 bg-purple-50 border border-purple-200 rounded-lg">
                                 <button onClick={() => handleSubAccordionToggle('nightlife')} className="w-full px-3 py-2 flex items-center justify-between">
                                     <div className="flex items-center space-x-2">
-                                        <button 
+                                        <span 
                                             onClick={(e) => { e.stopPropagation(); setShowNightlifeMarkers(!showNightlifeMarkers); }}
-                                            className="p-1 hover:bg-purple-100 rounded"
+                                            className="p-1 hover:bg-purple-100 rounded cursor-pointer"
                                             title={showNightlifeMarkers ? 'Esconder nightlife' : 'Mostrar nightlife'}
                                         >
                                             {showNightlifeMarkers ? (
@@ -1649,7 +1750,7 @@ export const MapcomponentClient: React.FC<MapProps> = ({
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
                                                 </svg>
                                             )}
-                                        </button>
+                                        </span>
                                         <span className="text-xs font-serif font-bold text-purple-800">Nightlife</span>
                                     </div>
                                     <svg className={`w-3 h-3 text-purple-800 transition-transform ${activeSubAccordion === 'nightlife' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
